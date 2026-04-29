@@ -378,6 +378,8 @@ GBM is massively overfitting to WebMainBench's page distribution. Need diverse C
 | Apr 23 | Pipelined multi-GPU architecture designed: 4×A100 → ~170 pps, 1B in ~55-68 days |
 | Apr 29 | Dripper vs Hummingbird head-to-head: 5.4 vs 43 pps (8x), $77K vs $9.7K for 1B pages on A100 |
 | Apr 29 | Cost analysis: Hummingbird on L4 ~$6.1K vs Dripper on A100 ~$77K → ~13x cheaper (est.) |
+| Apr 29 | L4 empirical benchmarks: Hummingbird 15.1 pps, Dripper 0.92 pps — 16.4x gap confirmed |
+| Apr 29 | 1B pages on 28× L4: ~27 days, ~$6.5K (RunPod). Dripper on L4 unusable: $105K for same job |
 
 ### 14. Hummingbird Latte Large (EuroBERT-2.1B, <|sep|> chunking)
 - **Architecture**: EuroBERT-2.1B with `<|sep|>` token separating blocks, packed into 8K chunks
@@ -647,7 +649,71 @@ The 210M distilled model is the sweet spot — matches the 2.1B teacher at 0.864
 
 64-token truncation gives a modest 1.25x throughput gain for 2.1pp quality loss. The bigger lever is pipelining CPU and GPU work (currently sequential) and multi-GPU parallelism. The simplify_html CPU stage (28ms/page) is the true bottleneck at scale, not the GPU.
 
-Head-to-head against Dripper 0.6B on the same A100: **8x faster** (43 vs 5.4 pps). Because the 210M encoder is compute-bound (not bandwidth-bound), it runs efficiently on cheap GPUs like L4s — giving a **~13x cost advantage** over Dripper on A100s ($6.1K vs $77K for 1B pages). Dripper's autoregressive architecture is locked to high-bandwidth GPUs.
+Head-to-head against Dripper 0.6B on the same A100: **8x faster** (43 vs 5.4 pps). On L4 GPUs (empirically validated): **16.4x faster** (15.1 vs 0.92 pps) — the gap widens because autoregressive decoding collapses on L4's low memory bandwidth (300 GB/s vs A100's 2 TB/s). Cost for 1B pages: **$6.5K (Hummingbird on L4) vs $105K (Dripper on L4) vs $77K (Dripper on A100)**. Dripper's autoregressive architecture is locked to high-bandwidth GPUs.
+
+### 29. L4 GPU benchmarks — real CC pages (empirical, 500 pages)
+
+**Setup**: 8× NVIDIA L4 (23GB each), 500 real Common Crawl pages (median 40KB HTML), EuroBERT-210M distilled (Latte Small), bf16 + SDPA, no torch.compile.
+
+**Hummingbird Latte Small (210M) — end-to-end pipeline:**
+
+| Stage | Time (500pg) | % | Rate |
+|-------|-------------|---|------|
+| simplify_html (CPU) | 13.1s | 24% | 38 pps |
+| extract+chunk (CPU) | 5.8s | 11% | 86 pps |
+| GPU inference | 33.2s | 65% | 15.1 pps |
+| **Total (sequential)** | **53.4s** | | **9.3 pps** |
+
+- Best config: bf16 + SDPA + max_batch_tokens=16384 (length-sorted batching)
+- bf16 is 13% faster than fp16 on L4 tensor cores
+- Smaller batch token budgets better: 16K > 32K > 64K (less padding waste)
+- Real-page token distribution: median=2,692, mean=3,593, p95=8,180 tokens/chunk
+- 37% of chunks land in the 8K bucket — quadratic attention makes these 9x more expensive than median chunks
+- SDPA 4D mask fix: model creates [B,1,S,S] expanded mask that prevents efficient SDPA kernel. Patched to pass None (no padding) or [B,1,1,S] (with padding). Saves ~3GB VRAM but no throughput change — efficient kernel was already dispatched.
+- torch.compile with CUDA graphs: same 14.2 pps as eager (dynamic shapes cause excessive graph captures). Fixed-bucket approach with multiple compiled models was worse (7.8-9.2 pps) due to padding waste.
+
+**Hummingbird vs A100 comparison:**
+
+| Metric | A100 (work log) | L4 (measured) | L4/A100 |
+|--------|----------------|---------------|---------|
+| GPU-only pps | 43 | 15.1 | 35% |
+| Sequential pps | 15.9 | 9.3 | 58% |
+| simplify_html pps | 38 | 38 | same |
+
+GPU-only is 35% of A100, worse than the FLOPS-ratio estimate of 40%. Real pages have heavy-tail long sequences where quadratic attention scaling hurts L4 more.
+
+**Dripper 0.6B on L4 — vLLM benchmark (100 pages):**
+
+| Metric | Value |
+|--------|-------|
+| Pages/sec | 0.92 |
+| Output tok/s | 145 |
+| Avg prompt tokens | 4,372 |
+| Avg output tokens | 157 |
+| GPU time % | 95% |
+
+Dripper on L4 is 17% of its A100 speed (0.92 vs 5.38 pps), matching the memory bandwidth ratio (300/2039 GB/s = 15%). Guided decoding regex adds overhead on top.
+
+**Head-to-head cost comparison for 1B pages:**
+
+| Setup | pps | GPU-hours | RunPod ($0.35/hr) | GCP ($0.80/hr) |
+|-------|-----|-----------|-------------------|----------------|
+| **Hummingbird 210M on L4** | **15.1** | **18,400** | **$6,500** | **$14,700** |
+| Hummingbird 210M on A100 | 43 | 6,460 | — | $9,700 |
+| Dripper 0.6B on A100 | 5.38 | 51,600 | — | $77,000 |
+| Dripper 0.6B on L4 | 0.92 | 301,000 | $105,000 | $241,000 |
+
+- Hummingbird on L4 vs Dripper on L4: **16.4x faster, 16.4x cheaper**
+- Hummingbird on L4 vs Dripper on A100: **12x cheaper** ($6.5K vs $77K)
+- Dripper on L4 is worse than Dripper on A100 — cheaper GPU-hours but 6x more of them
+
+**1B pages in 30 days (pipelined, 8 CPU workers):**
+
+| GPUs | Effective pps | Days | RunPod cost |
+|------|--------------|------|-------------|
+| 8× L4 (Hummingbird) | 121 | 96 | $6,500 |
+| 28× L4 (Hummingbird) | 423 | **27 days** | **$6,500** |
+| 420× L4 (Dripper) | 386 | 30 days | $105,000 |
 
 ## Model Zoo
 
