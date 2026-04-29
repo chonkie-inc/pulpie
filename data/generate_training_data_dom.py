@@ -26,7 +26,7 @@ BLOCK_TAGS = {
     "p", "h1", "h2", "h3", "h4", "h5", "h6",
     "li", "pre", "blockquote", "td", "th", "figcaption", "dt", "dd",
 }
-CONTAINER_TAGS = {"div", "section", "article", "main", "body"}
+CONTAINER_TAGS = {"div", "section", "article", "main", "body", "nav", "footer", "aside", "header"}
 MIN_TEXT_LEN = 5
 
 # Feature columns (must match Rust Features struct)
@@ -47,6 +47,7 @@ FEATURE_COLS = [
     "section_heading_text_len", "section_block_count", "section_link_density",
     "page_total_blocks", "page_total_text_len", "page_total_link_ratio",
     "page_heading_count", "block_text_len_ratio",
+    "in_nav", "in_footer", "in_aside", "in_header",
 ]
 
 TAG_TYPE_MAP = {

@@ -371,6 +371,13 @@ GBM is massively overfitting to WebMainBench's page distribution. Need diverse C
 | Apr 18 | DeepSeek V3.2 label quality verification: v0=0.840, short_compact=0.865, compact=0.862, v1=0.847, v2=0.835 |
 | Apr 19 | Dripper native vLLM eval: 0.854 (valid only) on 200 English pages — below paper's 0.878 claim |
 | Apr 20 | Error analysis: paper's 0.9001 uses jieba tokenization (+1-2pp), all languages, and eval conditions we can't reproduce |
+| Apr 22 | EuroBERT 2.1B→610M distillation complete: 0.849 ROUGE-5, uploaded as latte-base-v1 |
+| Apr 22 | EuroBERT 2.1B→210M distillation complete: 0.864 ROUGE-5 (matches teacher!), uploaded as latte-small-v1 |
+| Apr 23 | 64-token truncation eval: -2.1pp quality, only 1.25x GPU speedup (HTML structure dominates tokens) |
+| Apr 23 | Real-page throughput benchmark: 15.9 pps sequential, 43 pps GPU-only, CPU simplify_html is bottleneck |
+| Apr 23 | Pipelined multi-GPU architecture designed: 4×A100 → ~170 pps, 1B in ~55-68 days |
+| Apr 29 | Dripper vs Hummingbird head-to-head: 5.4 vs 43 pps (8x), $77K vs $9.7K for 1B pages on A100 |
+| Apr 29 | Cost analysis: Hummingbird on L4 ~$6.1K vs Dripper on A100 ~$77K → ~13x cheaper (est.) |
 
 ### 14. Hummingbird Latte Large (EuroBERT-2.1B, <|sep|> chunking)
 - **Architecture**: EuroBERT-2.1B with `<|sep|>` token separating blocks, packed into 8K chunks
@@ -412,3 +419,241 @@ GBM is massively overfitting to WebMainBench's page distribution. Need diverse C
 3. Even with their exact pipeline class (256K context, trafilatura fallback), we get 0.77-0.85 on English
 4. The 0.9001 is measured under evaluation conditions we cannot fully reproduce on our English subset
 5. No better labeling model exists — DeepSeek short_compact (0.865) is our practical ceiling
+
+### 16. Removing heuristic pruning — letting GBM learn from all blocks
+- Removed nav/footer/aside/header pruning from clean.rs
+- Added 4 boolean features: in_nav, in_footer, in_aside, in_header (30 features total)
+- Added nav/footer/aside/header to CONTAINER_TAGS in segment.rs
+- Trained v3 models on WMB, CC, and combined data
+- **Result**: v3 (no pruning, 30 features) WORSE than v2 (pruning + 26 features)
+  - v3 WMB: 0.780 vs v2 WMB: 0.805
+  - v3 combined: 0.780 vs v2: 0.806
+- **Conclusion**: GBM can't learn nav/footer filtering as well as hard-coded pruning rules
+
+### 17. GBM generalization failure
+- CC-only GBM on WMB (honest out-of-sample): **0.68 ROUGE-5**
+- magic-html (zero training, pure heuristics): **0.71 ROUGE-5**
+- The GBM loses to hand-written rules on unseen data
+- 30 numeric features encode the same signals magic-html hard-codes in XPaths — the model can't read text
+- **The 0.80 ROUGE reported earlier was trained on the test set — not a real score**
+
+### 18. GPU inference benchmarks (EuroBERT-210M, torch.compile + SDPA)
+- Script: `data/bench_gpu_compile.py`
+- Tested on A100 with torch.compile(mode="reduce-overhead") + attn_implementation="sdpa"
+- Model uses only 433MB VRAM — fits on any GPU
+
+**A100 throughput (best batch size per seq length):**
+
+| SeqLen | Pages/sec | ms/page | Peak VRAM |
+|--------|-----------|---------|-----------|
+| 512 | 508 | 1.97ms | 870MB |
+| 1024 | 220 | 4.54ms | 1.4GB |
+| 2048 | 84 | 11.88ms | 2.8GB |
+| 4096 | 28 | 36ms | 6.8GB |
+| 8192 | 8.2 | 122ms | 20GB |
+
+**Cost per 1B pages (RTX 3090 @ $0.22/hr RunPod):**
+
+| SeqLen | $/1B pages |
+|--------|------------|
+| 512 | $267 |
+| 1024 | $616 |
+| 2048 | $1,613 |
+| 4096 | $4,894 |
+| 8192 | $16,533 |
+
+Quadratic attention scaling: seq=8192 is 27x more expensive than seq=1024.
+
+### 19. Cascade / pre-filter analysis
+
+**GBM as pre-filter (CC model on WMB, out-of-sample):**
+- At 99.5% content recall, GBM only strips 8% of text — useless as pre-filter
+- Distribution shift kills confidence: CC model isn't sure enough about WMB pages
+
+**Heuristic pre-filter (nav/footer/aside/header + link_ratio>0.5):**
+- Strips 38% of blocks but only 14% of text (boilerplate blocks are short)
+- Content loss: 0.31% (semantic tags only) to 2.25% (with link ratio)
+- **Fundamental limit**: boilerplate is only 32% of total text chars. Even perfect pre-filtering = ~32% seq reduction.
+
+### 20. Simplified HTML token budget analysis
+
+With 128 tokens/block truncation (Dripper uses 500 chars ≈ 125 tokens):
+
+| Percentile | Tokens/page (raw) | With heuristic pre-filter |
+|------------|-------------------|--------------------------|
+| p25 | 942 | 511 |
+| p50 | 1,900 | 1,150 |
+| p75 | 3,476 | 2,273 |
+| p90 | 6,539 | 4,799 |
+| p95 | 10,241 | 8,282 |
+
+Pages fitting in context window (with pre-filter):
+- 2048 tokens: 72% of pages
+- 4096 tokens: 88% of pages
+- 8192 tokens: 95% of pages
+
+### 21. Production inference plan: 1B pages in 30 days
+
+**Target**: 1B pages, 30 days, <$5K budget
+
+**Winning config: EuroBERT-210M + 64 tok/block + heuristic pre-filter on 8× L4 GPUs**
+- 66 pages/sec per GPU × 8 = 531 pages/sec sustained
+- 1.38B pages in 30 days (38% headroom)
+- Most pages fit in seq=1024-2048 range with 64 tok/block truncation
+
+| Config (8× L4) | Pages/30d | Feasible? |
+|-----------------|-----------|-----------|
+| EuroBERT-210M, 128 tok/block | 0.34B | NO |
+| **EuroBERT-210M, 64 tok/block** | **1.38B** | **YES** |
+| DistilBERT-66M, 128 tok/block | 1.01B | barely |
+| DistilBERT-66M, 64 tok/block | 4.13B | overkill |
+| EuroBERT-610M, 128 tok/block | 0.12B | NO |
+| EuroBERT-610M, 64 tok/block | 0.48B | NO |
+
+**Key decisions:**
+1. **Token-based truncation, not character-based**: Dripper uses 500 chars/block — imprecise. Use tokenizer.encode()[:N] for exact control. Tokenizers are fast (~millions tok/sec), negligible overhead.
+2. **64 tokens/block** (~250-300 chars): Halves seq length vs 128. Classification signal is usually in first few words + HTML structure. Needs empirical validation.
+3. **Heuristic pre-filter before transformer**: Strip nav/footer/aside/header + high-link-ratio blocks. Drops block count 38%, saves ~22% compute (quadratic scaling).
+4. **Test truncation levels**: Benchmark 32, 64, 128 tokens/block on ROUGE-5 to find quality/speed sweet spot.
+5. **Dripper's list simplification**: ul/ol with >2 items → keep first + last + "...". Saves many blocks on nav menus and long lists. We should adopt this.
+
+### 22. EuroBERT 2.1B → 610M distillation (complete)
+- Script: `data/train_distill_eurobert.py`
+- Teacher: EuroBERT-2.1B checkpoint-5250 (0.864 ROUGE-5)
+- Student: EuroBERT-610M (randomly initialized classifier head)
+- 4× A100, alpha=0.7 (KL weight), temperature=2.0
+- 3,499 steps, ~2.15 sec/step, ~2 hours
+- **Result**: ROUGE-5 = 0.849 (All), 0.889 (Simple), 0.842 (Mid), 0.833 (Hard)
+- F1=0.925, Precision=0.917, Recall=0.933
+- Model saved: `data/block_classifier_eurobert_610m_distill/final/`
+- Uploaded: `chonkie-ai/hummingbird-latte-base-v1` (replaced Qwen3 model)
+
+### 23. EuroBERT 2.1B → 210M distillation (complete)
+- Script: `data/train_distill_eurobert_210m.py`
+- Same setup as 610M: alpha=0.7, temperature=2.0, 4× A100
+- 3,499 steps, ~2.15 sec/step, ~2h5m
+- **Result**: ROUGE-5 = 0.864 (All), 0.885 (Simple), 0.841 (Mid), 0.866 (Hard)
+- F1=0.925, Precision=0.915, Recall=0.936
+- **Matches the 2.1B teacher** (0.864 vs 0.864) at 1/10th the size
+- Actually beats 610M distilled (0.849) — smaller model learned better
+- Model saved: `data/block_classifier_eurobert_210m_distill/final/`
+- Uploaded: `chonkie-ai/hummingbird-latte-small-v1` (private)
+
+### 24. 64-token truncation quality evaluation
+- Tested 2.1B teacher and 210M distilled on WMB with full (500-char) vs 64-token block truncation
+- Script: inline eval on 201 WMB pages
+
+**ROUGE-5 comparison:**
+
+| Model | Truncation | All | Simple | Mid | Hard |
+|-------|-----------|------|--------|-----|------|
+| 2.1B teacher | Full (500-char) | 0.864 | 0.891 | 0.872 | 0.829 |
+| 2.1B teacher | 64-token | 0.839 | 0.873 | 0.844 | 0.799 |
+| 210M distilled | Full (500-char) | 0.864 | 0.885 | 0.841 | 0.866 |
+| 210M distilled | 64-token | 0.843 | 0.869 | 0.823 | 0.838 |
+
+- **64-token truncation costs ~2.1-2.5 pp** across both models
+- Consistent degradation — not model-dependent, information loss from truncation
+- Even at 64-tok, 210M (0.843) slightly beats the 2.1B (0.839)
+- **Opportunity**: Re-distill on 64-token truncated data to recover ~1-1.5pp (train/eval distribution match)
+
+### 25. Real-page throughput benchmark (EuroBERT-210M)
+- Script: `data/bench_throughput_real.py`
+- Tested on 500 real CC pages (avg 120KB HTML) with length-bucketed batching
+
+**End-to-end pipeline breakdown (single A100, SDPA, torch.compile):**
+
+| Stage | Time | % of total |
+|-------|------|------------|
+| simplify_html (CPU) | 13.2s | 42% |
+| extract+tokenize+chunk (CPU) | 6.5s | 21% |
+| GPU inference | 11.7s | 37% |
+
+- **End-to-end: 15.9 pages/sec** (sequential CPU→GPU)
+- GPU alone: 190K tokens/sec, 51 chunks/sec (~43 pages/sec)
+- **CPU is the bottleneck** — simplify_html at 38 pages/sec single-threaded
+
+**Key optimizations discovered:**
+1. **Length-bucketed batching**: Sorting chunks by length before batching → 5x speedup (padding waste 50% → 4.3%)
+2. **Dynamic batch sizing**: Cap batch×seq_len ≤ 128K to avoid OOM on long sequences
+
+**Real page statistics (500 CC pages):**
+- Blocks/page: median=57, mean=91, p95=246
+- Chunks/page: median=1, mean=1.2, max=8
+- Tokens/chunk: median=2,992, mean=3,728, p95=8,177
+
+### 26. 64-token truncation does NOT give 3x GPU speedup
+- Full (500-char): 595 chunks, 2.22M tokens, 14.0s → 35.7 pages/sec GPU-only
+- 64-token: 565 chunks, 1.82M tokens, 11.2s → 44.6 pages/sec GPU-only
+- **Only 1.25x speedup**, not the 3x estimated earlier
+- Reason: HTML tags and structure dominate token count, not text content
+  - 500→128 char cutoff only drops 7% of tokens
+  - 64-token truncation drops 18% of tokens
+  - The simplified HTML structure (tags, attributes, nesting) itself is token-heavy regardless of text truncation
+
+**CPU time for simplify_html is identical** regardless of cutoff (500/256/128 chars all ~14s) — the cost is DOM parsing, not truncation.
+
+### 27. Production architecture: pipelined CPU→multi-GPU
+
+**Sequential (current)**: 15.9 pages/sec on single GPU — CPU idle during inference, GPU idle during preprocessing
+
+**Pipelined architecture (not yet implemented):**
+```
+CPU pool (8 workers, ~280 pps) → Queue per GPU → 4 GPUs (~43 pps each)
+```
+- 4×A100: ~170 pages/sec → 1B pages in 68 days
+- With 64-tok truncation: ~210 pps → ~55 days
+- CPU (8 cores × 35 pps = 280 pps) has headroom until ~7 GPUs
+
+**1B pages in 30 days requires:**
+- 4×A100 + CPU pipeline: ~55-68 days (need ~6-8 GPUs)
+- 8×L4 equivalent: similar compute, cheaper per GPU-hour
+
+### 28. Dripper vs Hummingbird head-to-head throughput (same GPU, same data)
+
+**Setup**: 500 real CC pages, single A100 80GB, SDPA attention
+
+| Model | Architecture | Throughput (GPU) | GPU-hours/1B pages | Notes |
+|-------|-------------|-----------------|-------------------|-------|
+| Dripper 0.6B | Autoregressive (vLLM) | 5.38 pps | 51,632 | Memory-bandwidth bound |
+| **Hummingbird 210M** | **Encoder (SDPA)** | **43 pps** | **6,460** | **Compute-bound** |
+| **Speedup** | | **8x** | **8x** | |
+
+**Why the 8x gap**: Dripper generates tokens autoregressively (sequential decoding, KV-cache bound by HBM bandwidth). Hummingbird classifies in a single forward pass with batched encoder inference. Encoders are compute-bound → scale with FLOPS, not memory bandwidth.
+
+**Cost comparison for 1B pages:**
+
+| Setup | Throughput | GPU-hours | $/GPU-hr | Total cost |
+|-------|-----------|-----------|----------|------------|
+| Dripper on A100 | 5.4 pps | 51,632 | $1.50 | **~$77K** |
+| Hummingbird on A100 | 43 pps | 6,460 | $1.50 | **~$9.7K** |
+| Hummingbird on L4 (est.) | ~16 pps | ~17,360 | $0.35 | **~$6.1K** |
+
+- A100 vs A100: **8x cheaper** (same hardware, raw throughput advantage)
+- Hummingbird on L4 vs Dripper on A100: **~13x cheaper** (cheaper hardware + still good throughput)
+- Dripper **cannot** run efficiently on L4s — autoregressive decoding needs high memory bandwidth (A100: 2 TB/s, L4: 300 GB/s). Throughput would collapse to <1 pps.
+- Hummingbird 210M is compute-bound and fits in 433MB VRAM — runs on any GPU class (L4, T4, RTX 3090)
+
+**L4 throughput estimate** (not yet benchmarked, extrapolated from FLOPS ratio):
+- A100: 312 TFLOPS FP16 → 43 pps
+- L4: ~120 TFLOPS FP16 → ~16-17 pps (proportional scaling expected for compute-bound workloads)
+- Needs empirical validation — actual L4 tensor core utilization with SDPA may differ
+
+## Key Insight: The Economics of Web-Scale Content Extraction
+
+Feature-based (GBM) and heuristic approaches are effectively free at web scale but cap at 0.68-0.71 ROUGE on unseen data. Transformer-based classification closes the gap to 0.85+ but introduces GPU cost.
+
+The 210M distilled model is the sweet spot — matches the 2.1B teacher at 0.864 ROUGE with 10x fewer parameters and ~40 pages/sec per GPU. The 610M model is actually worse (0.849) despite being 3x larger.
+
+64-token truncation gives a modest 1.25x throughput gain for 2.1pp quality loss. The bigger lever is pipelining CPU and GPU work (currently sequential) and multi-GPU parallelism. The simplify_html CPU stage (28ms/page) is the true bottleneck at scale, not the GPU.
+
+Head-to-head against Dripper 0.6B on the same A100: **8x faster** (43 vs 5.4 pps). Because the 210M encoder is compute-bound (not bandwidth-bound), it runs efficiently on cheap GPUs like L4s — giving a **~13x cost advantage** over Dripper on A100s ($6.1K vs $77K for 1B pages). Dripper's autoregressive architecture is locked to high-bandwidth GPUs.
+
+## Model Zoo
+
+| Name | HuggingFace | Size | ROUGE-5 | Notes |
+|------|-------------|------|---------|-------|
+| Latte Large | chonkie-ai/hummingbird-latte-large-v1 | 2.1B | 0.864 | Teacher, trained on CC |
+| **Latte Base** | **chonkie-ai/hummingbird-latte-base-v1** | **610M** | **0.849** | Distilled from 2.1B |
+| **Latte Small** | **chonkie-ai/hummingbird-latte-small-v1** | **210M** | **0.864** | Distilled from 2.1B, best value |
+| Espresso | chonkie-ai/hummingbird-espresso-v1 | GBM | 0.68* | *Out-of-sample; 0.81 on test set |

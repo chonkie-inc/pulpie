@@ -21,6 +21,10 @@ path = "src/bin/hummingbird.rs"
 name = "export_features"
 path = "src/bin/export_features.rs"
 
+[[bin]]
+name = "bench_rouge_trees"
+path = "src/bin/bench_rouge_trees.rs"
+
 [lib]
 name = "hummingbird"
 path = "src/lib.rs"

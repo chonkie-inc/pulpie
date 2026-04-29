@@ -1,9 +1,10 @@
-"""Compare qrater clean rates: hummingbird vs Dripper vs raw html2text.
+"""Compare qrater clean rates: hummingbird vs Dripper vs Latte vs raw html2text.
 
-Runs all three extraction methods on the same WMB pages:
+Runs all four extraction methods on the same WMB pages:
 1. Raw html2text (no extraction)
-2. Hummingbird GBM
+2. Hummingbird GBM (espresso)
 3. Dripper 0.6B (via local vLLM)
+4. Hummingbird Latte (encoder classifier)
 
 Scores each output with qrater EuroBERT-210m classifier.
 """
@@ -19,7 +20,7 @@ import time
 import html2text
 import requests
 import torch
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoModelForTokenClassification
 
 # ── MinerU-HTML module loading ──
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -33,8 +34,11 @@ WMB_PATH = os.path.join(DATA_DIR, 'webmainbench.jsonl')
 
 VLLM_URL = "http://localhost:8235/v1/chat/completions"
 MODEL_NAME = "opendatalab/MinerU-HTML-v1.1-hunyuan0.5B-compact"
+LATTE_MODEL_PATH = os.path.join(DATA_DIR, 'block_classifier_0.6B', 'final')
 MAX_TOKENS = 4096
 MAX_TEXT_CHARS = 10000
+BLOCK_TOKEN = "[BLOCK]"
+LATTE_MAX_LENGTH = 32768
 
 import importlib.util
 from dataclasses import dataclass, field
@@ -190,6 +194,77 @@ def extract_with_dripper(html_content):
         return ''
 
 
+def insert_block_markers(simplified_html):
+    pattern = re.compile(r'(_item_id="(\d+)")')
+    item_ids = []
+    parts = []
+    last_end = 0
+    for m in pattern.finditer(simplified_html):
+        item_id = m.group(2)
+        parts.append(simplified_html[last_end:m.start()])
+        parts.append(BLOCK_TOKEN + ' ')
+        parts.append(m.group(0))
+        last_end = m.end()
+        item_ids.append(item_id)
+    if not item_ids:
+        return None, []
+    parts.append(simplified_html[last_end:])
+    return ''.join(parts), item_ids
+
+
+def load_latte_model(device):
+    tok = AutoTokenizer.from_pretrained(LATTE_MODEL_PATH, trust_remote_code=True)
+    mdl = AutoModelForTokenClassification.from_pretrained(
+        LATTE_MODEL_PATH, trust_remote_code=True,
+        torch_dtype=torch.bfloat16, attn_implementation='sdpa',
+    ).to(device).eval()
+    for m in mdl.modules():
+        if hasattr(m, 'is_causal'):
+            m.is_causal = False
+    block_token_id = tok.convert_tokens_to_ids(BLOCK_TOKEN)
+    return mdl, tok, block_token_id
+
+
+@torch.no_grad()
+def extract_with_latte(html_content, latte_model, latte_tokenizer, block_token_id, device):
+    try:
+        simplified, map_html = simplify_html(html_content)
+    except Exception:
+        return ''
+
+    marked_html, item_ids = insert_block_markers(simplified)
+    if marked_html is None:
+        return ''
+
+    encoding = latte_tokenizer(
+        marked_html, truncation=True, max_length=LATTE_MAX_LENGTH,
+        add_special_tokens=True, padding=False, return_tensors='pt',
+    )
+    input_ids = encoding['input_ids'].to(device)
+    outputs = latte_model(input_ids=input_ids, attention_mask={'full_attention': None})
+    logits = outputs.logits[0]
+
+    block_positions = (input_ids[0] == block_token_id).nonzero(as_tuple=True)[0]
+    preds = logits[block_positions].argmax(dim=-1).cpu().tolist()
+
+    labels = {}
+    for i, item_id in enumerate(item_ids):
+        if i < len(preds):
+            labels[item_id] = 'main' if preds[i] == 1 else 'other'
+        else:
+            labels[item_id] = 'other'
+
+    n_main = sum(1 for v in labels.values() if v == 'main')
+    if n_main == 0:
+        return ''
+
+    try:
+        main_html = extract_main_html(map_html, labels)
+        return html_to_text(main_html).strip()
+    except Exception:
+        return ''
+
+
 def classify_batch(texts, model, tokenizer, batch_size=32):
     results = []
     with torch.no_grad():
@@ -215,6 +290,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--limit', type=int, default=500)
     parser.add_argument('--gpu', type=int, default=1)
+    parser.add_argument('--skip-dripper', action='store_true', help='Skip Dripper (requires vLLM)')
     args = parser.parse_args()
 
     device = f'cuda:{args.gpu}'
@@ -224,6 +300,9 @@ def main():
         QRATER_MODEL, dtype=torch.bfloat16, trust_remote_code=True,
     ).to(device)
     model.eval()
+
+    print(f'Loading Latte encoder on {device}...', flush=True)
+    latte_model, latte_tokenizer, block_token_id = load_latte_model(device)
 
     print(f'Loading WebMainBench (English only)...', flush=True)
     pages = []
@@ -237,9 +316,10 @@ def main():
         pages = pages[:args.limit]
     print(f'  {len(pages)} pages', flush=True)
 
-    # Extract with all three methods
-    raw_texts, hbird_texts, dripper_texts = [], [], []
+    # Extract with all four methods
+    raw_texts, hbird_texts, dripper_texts, latte_texts = [], [], [], []
     dripper_fail = 0
+    latte_fail = 0
     t0 = time.time()
 
     for i, page in enumerate(pages):
@@ -249,27 +329,37 @@ def main():
         raw_md = html_to_text(html)[:MAX_TEXT_CHARS]
         raw_texts.append(raw_md if raw_md.strip() else '')
 
-        # Hummingbird
+        # Hummingbird GBM (espresso)
         hbird_md = extract_with_hummingbird(html)[:MAX_TEXT_CHARS]
         hbird_texts.append(hbird_md if hbird_md.strip() else '')
 
         # Dripper
-        drip_md = extract_with_dripper(html)[:MAX_TEXT_CHARS]
+        if not args.skip_dripper:
+            drip_md = extract_with_dripper(html)[:MAX_TEXT_CHARS]
+        else:
+            drip_md = ''
         dripper_texts.append(drip_md if drip_md.strip() else '')
         if not drip_md.strip():
             dripper_fail += 1
+
+        # Latte (encoder classifier)
+        latte_md = extract_with_latte(html, latte_model, latte_tokenizer, block_token_id, device)[:MAX_TEXT_CHARS]
+        latte_texts.append(latte_md if latte_md.strip() else '')
+        if not latte_md.strip():
+            latte_fail += 1
 
         if (i + 1) % 50 == 0:
             elapsed = time.time() - t0
             rate = (i + 1) / elapsed
             eta = (len(pages) - i - 1) / rate
             print(f'  {i+1}/{len(pages)} ({elapsed:.0f}s, {rate:.1f}pg/s, ETA={eta:.0f}s) '
-                  f'dripper_fail={dripper_fail}', flush=True)
+                  f'dripper_fail={dripper_fail} latte_fail={latte_fail}', flush=True)
 
     print(f'\n  Done extracting in {time.time() - t0:.0f}s', flush=True)
     print(f'  Raw empty: {sum(1 for t in raw_texts if not t)}', flush=True)
     print(f'  Hbird empty: {sum(1 for t in hbird_texts if not t)}', flush=True)
     print(f'  Dripper empty: {sum(1 for t in dripper_texts if not t)}', flush=True)
+    print(f'  Latte empty: {sum(1 for t in latte_texts if not t)}', flush=True)
 
     # Score with qrater
     print(f'\nScoring with qrater...', flush=True)
@@ -280,12 +370,14 @@ def main():
     raw_results = classify_batch(safe_texts(raw_texts), model, tokenizer)
     hbird_results = classify_batch(safe_texts(hbird_texts), model, tokenizer)
     dripper_results = classify_batch(safe_texts(dripper_texts), model, tokenizer)
+    latte_results = classify_batch(safe_texts(latte_texts), model, tokenizer)
 
     # Force empty to dirty
     for texts_list, results_list in [
         (raw_texts, raw_results),
         (hbird_texts, hbird_results),
         (dripper_texts, dripper_results),
+        (latte_texts, latte_results),
     ]:
         for i, t in enumerate(texts_list):
             if not t.strip():
@@ -295,8 +387,9 @@ def main():
     n = len(pages)
     methods = [
         ('Raw html2text', raw_results),
-        ('Hummingbird (GBM)', hbird_results),
+        ('Hummingbird Espresso (GBM)', hbird_results),
         ('Dripper 0.6B', dripper_results),
+        ('Hummingbird Latte (encoder)', latte_results),
     ]
 
     print(f'\n{"="*60}')
@@ -310,8 +403,8 @@ def main():
 
     # By difficulty
     print(f'\n  By difficulty:')
-    print(f'  {"Level":>7}  {"Raw":>10}  {"Hbird":>10}  {"Dripper":>10}')
-    print(f'  {"-"*42}')
+    print(f'  {"Level":>7}  {"Raw":>10}  {"Espresso":>10}  {"Dripper":>10}  {"Latte":>10}')
+    print(f'  {"-"*53}')
     for level in ['simple', 'mid', 'hard']:
         idx = [i for i, p in enumerate(pages) if p.get('meta', {}).get('level') == level]
         if not idx:
@@ -320,7 +413,60 @@ def main():
         for _, results in methods:
             c = sum(1 for i in idx if results[i]['label'] == 'clean')
             vals.append(f'{c}/{len(idx)} ({c/len(idx)*100:.0f}%)')
-        print(f'  {level:>7}  {vals[0]:>10}  {vals[1]:>10}  {vals[2]:>10}')
+        print(f'  {level:>7}  {vals[0]:>10}  {vals[1]:>10}  {vals[2]:>10}  {vals[3]:>10}')
+
+    # ROUGE-5 scoring (if pages have reference text)
+    from collections import Counter
+
+    def _ngrams(tokens, n):
+        return [tuple(tokens[i:i+n]) for i in range(len(tokens) - n + 1)]
+
+    def rouge_n_f1(reference, prediction, n=5):
+        ref_tokens = reference.split()
+        pred_tokens = prediction.split()
+        if not ref_tokens or not pred_tokens:
+            return 0.0
+        ref_ng = Counter(_ngrams(ref_tokens, n))
+        pred_ng = Counter(_ngrams(pred_tokens, n))
+        if not ref_ng or not pred_ng:
+            return 0.0
+        overlap = sum((ref_ng & pred_ng).values())
+        prec = overlap / max(sum(pred_ng.values()), 1)
+        rec = overlap / max(sum(ref_ng.values()), 1)
+        if prec + rec == 0:
+            return 0.0
+        return 2 * prec * rec / (prec + rec)
+
+    has_ref = any(p.get('convert_main_content') for p in pages)
+    if has_ref:
+        print(f'\n{"="*60}')
+        print(f'ROUGE-5 F1 (WMB English, {n} pages)')
+        print(f'{"="*60}')
+
+        text_methods = [
+            ('Raw html2text', raw_texts),
+            ('Hummingbird Espresso (GBM)', hbird_texts),
+            ('Dripper 0.6B', dripper_texts),
+            ('Hummingbird Latte (encoder)', latte_texts),
+        ]
+
+        print(f'  {"Method":<30} {"All":>8} {"Simple":>8} {"Mid":>8} {"Hard":>8}')
+        print(f'  {"-"*62}')
+        for name, texts in text_methods:
+            scores_all = []
+            scores_by_level = {}
+            for i, page in enumerate(pages):
+                ref = page.get('convert_main_content', '')
+                level = page.get('meta', {}).get('level', 'unknown')
+                r5 = rouge_n_f1(ref, texts[i]) if ref and texts[i] else 0.0
+                scores_all.append(r5)
+                scores_by_level.setdefault(level, []).append(r5)
+            avg_all = sum(scores_all) / max(len(scores_all), 1)
+            avgs = {}
+            for lev in ['simple', 'mid', 'hard']:
+                vals = scores_by_level.get(lev, [])
+                avgs[lev] = sum(vals) / max(len(vals), 1)
+            print(f'  {name:<30} {avg_all:>8.4f} {avgs["simple"]:>8.4f} {avgs["mid"]:>8.4f} {avgs["hard"]:>8.4f}')
 
 
 if __name__ == '__main__':

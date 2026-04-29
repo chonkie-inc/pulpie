@@ -66,32 +66,6 @@ pub fn prune_boilerplate(document: &mut Html) {
 
             let class = el.attr("class").unwrap_or("").to_lowercase();
             let id = el.attr("id").unwrap_or("").to_lowercase();
-            let role = el.attr("role").unwrap_or("");
-
-            if matches!(tag, "nav" | "footer" | "aside") {
-                to_remove.push(node.id());
-                continue;
-            }
-
-            // Only prune <header> if it's NOT inside <article> or <main>
-            // (article headers contain real content like title/byline)
-            if tag == "header" {
-                let inside_content = node.ancestors().any(|anc| {
-                    matches!(
-                        anc.value(),
-                        Node::Element(e) if matches!(e.name.local.as_ref(), "article" | "main")
-                    )
-                });
-                if !inside_content {
-                    to_remove.push(node.id());
-                    continue;
-                }
-            }
-
-            if matches!(role, "navigation" | "banner" | "complementary" | "contentinfo") {
-                to_remove.push(node.id());
-                continue;
-            }
 
             if has_boilerplate_token(&class, &id) {
                 to_remove.push(node.id());

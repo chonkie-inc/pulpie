@@ -1,12 +1,10 @@
-"""Generate CC training data for hummingbird GBM.
+"""Generate training data from CC labeled pages (parallelized).
 
-Pipeline:
-1. Load Dripper double-check results, filter to pages with >=70% agreement
-2. Load DeepSeek labels for those pages
-3. Re-run MinerU-HTML simplification to get block texts per _item_id
-4. Run hummingbird export_features on raw HTML to get Rust blocks + features
-5. Match Rust blocks to MinerU-HTML blocks by normalized text, assign labels
-6. Output as CSV in same format as training_data_dom.csv
+Projects Dripper's _item_id labels onto Hummingbird's block segmentation
+via text overlap matching. Uses multiprocessing for speed.
+
+Input: cc_labeled_*.jsonl (labels) + cc_sampled*.jsonl (HTML)
+Output: training_data_cc.csv
 """
 
 import csv
@@ -15,113 +13,28 @@ import os
 import re
 import subprocess
 import sys
-import time
-
-from bs4 import BeautifulSoup
-
-# ── MinerU-HTML module loading (same as other CC scripts) ──
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-MINERU_PATH = os.path.join(SCRIPT_DIR, '..', '..', 'MinerU-HTML')
-HUMMINGBIRD_BIN = os.path.join(SCRIPT_DIR, '..', 'target', 'release', 'export_features')
-
 import importlib.util
 from dataclasses import dataclass, field
 from typing import Optional
 from enum import Enum
+from multiprocessing import Pool
+from functools import partial
 
-def _make_module(name):
-    mod = type(sys)(name)
-    sys.modules[name] = mod
-    return mod
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+HUMMINGBIRD_BIN = os.path.join(SCRIPT_DIR, "..", "target", "release", "export_features")
+OUTPUT_PATH = os.path.join(SCRIPT_DIR, "training_data_cc.csv")
+MINERU_PATH = os.path.join(SCRIPT_DIR, '..', '..', 'MinerU-HTML')
+NUM_WORKERS = 32
 
-_make_module('mineru_html')
-_c = _make_module('mineru_html.constants')
-_c.ITEM_ID_ATTR = '_item_id'
-_c.TAIL_BLOCK_TAG = 'cc-alg-uc-text'
-_c.SELECT_ATTR = 'cc-select'
-_c.CLASS_ATTR = 'mark-selected'
-
-class TagType(Enum):
-    Main = 'main'
-    Other = 'other'
-_c.TagType = TagType
-
-_e = _make_module('mineru_html.exceptions')
-class MinerUHTMLError(Exception): pass
-for cn in ['MinerUHTMLPreprocessError', 'MinerUHTMLPromptError',
-           'MinerUHTMLResponseParseError', 'MinerUHTMLMapToMainError',
-           'MinerUHTMLFallbackError']:
-    setattr(_e, cn, type(cn, (MinerUHTMLError,), {}))
-_e.MinerUHTMLError = MinerUHTMLError
-
-_b = _make_module('mineru_html.base')
-@dataclass
-class MinerUHTMLProcessData:
-    simpled_html: str = ''
-    map_html: str = ''
-@dataclass
-class MinerUHTMLGenerateInput:
-    full_prompt: str = ''
-@dataclass
-class MinerUHTMLParseResult:
-    item_label: dict = field(default_factory=dict)
-@dataclass
-class MinerUHTMLOutput:
-    main_html: str = ''
-@dataclass
-class MinerUHTMLInput:
-    raw_html: str = ''
-@dataclass
-class MinerUHTMLCase:
-    case_id: str = ''
-    input_data: MinerUHTMLInput = field(default_factory=MinerUHTMLInput)
-    process_data: MinerUHTMLProcessData = field(default_factory=MinerUHTMLProcessData)
-    generate_input: MinerUHTMLGenerateInput = field(default_factory=MinerUHTMLGenerateInput)
-    generate_output: Optional[object] = None
-    parse_result: MinerUHTMLParseResult = field(default_factory=MinerUHTMLParseResult)
-    output_data: MinerUHTMLOutput = field(default_factory=MinerUHTMLOutput)
-for cls in [MinerUHTMLCase, MinerUHTMLProcessData, MinerUHTMLGenerateInput,
-            MinerUHTMLParseResult, MinerUHTMLOutput, MinerUHTMLInput]:
-    setattr(_b, cls.__name__, cls)
-
-_make_module('mineru_html.process')
-
-def _load_file(mod_name, filename):
-    path = os.path.join(MINERU_PATH, 'mineru_html', 'process', filename)
-    spec = importlib.util.spec_from_file_location(mod_name, path)
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[mod_name] = mod
-    spec.loader.exec_module(mod)
-    return mod
-
-_load_file('mineru_html.process.html_utils', 'html_utils.py')
-_simplify = _load_file('mineru_html.process.simplify_html', 'simplify_html.py')
-simplify_html = _simplify.simplify_html
-
-# ── Paths ──
-SAMPLED_PATH = os.path.join(SCRIPT_DIR, 'cc_sampled.jsonl')
-LABELED_PATH = os.path.join(SCRIPT_DIR, 'cc_labeled_filtered.jsonl')
-DOUBLECHECK_PATH = os.path.join(SCRIPT_DIR, 'cc_doublecheck_results.jsonl')
-OUTPUT_PATH = os.path.join(SCRIPT_DIR, 'training_data_cc.csv')
-
-# Feature columns (must match generate_training_data_dom.py / Rust Features struct)
 FEATURE_COLS = [
-    "text_len", "word_count", "sentence_count", "comma_count",
-    "avg_word_length", "stop_word_ratio", "capitalization_ratio",
-    "punctuation_density", "has_copyright", "has_date_pattern",
-    "link_len", "link_count", "link_ratio", "tag_count",
-    "paragraph_count", "heading_count", "list_item_count", "image_count",
-    "text_to_tag_ratio",
-    "class_id_score", "parent_class_id_score", "tag_type", "tag_type_score",
-    "dom_depth", "position", "distance_from_end",
-    "is_first_10pct", "is_last_10pct", "has_boilerplate_class",
-    "parent_tag_type", "semantic_ancestor",
-    "prev_block_text_len", "prev_block_link_ratio",
-    "next_block_text_len", "next_block_link_ratio",
-    "blocks_since_heading", "blocks_until_heading",
-    "section_heading_text_len", "section_block_count", "section_link_density",
-    "page_total_blocks", "page_total_text_len", "page_total_link_ratio",
-    "page_heading_count", "block_text_len_ratio",
+    "link_ratio", "page_total_blocks", "parent_tag_type", "page_total_link_ratio",
+    "tag_type", "section_block_count", "page_total_text_len", "dom_depth",
+    "section_link_density", "position", "tag_type_score", "section_heading_text_len",
+    "blocks_since_heading", "word_count", "next_block_link_ratio", "prev_block_link_ratio",
+    "text_to_tag_ratio", "semantic_ancestor", "blocks_until_heading", "page_heading_count",
+    "parent_class_id_score", "next_block_text_len", "link_count", "text_len",
+    "tag_count", "avg_word_length",
+    "in_nav", "in_footer", "in_aside", "in_header",
 ]
 
 TAG_TYPE_MAP = {
@@ -129,202 +42,232 @@ TAG_TYPE_MAP = {
     "Preformatted": 3, "TableCell": 4, "Blockquote": 5, "Other": 6,
 }
 
-MIN_AGREEMENT = 0.70
+
+def _init_mineru():
+    """Initialize MinerU-HTML modules in worker process."""
+    def _make_module(name):
+        mod = type(sys)(name)
+        sys.modules[name] = mod
+        return mod
+
+    if 'mineru_html' not in sys.modules:
+        _make_module('mineru_html')
+        _c = _make_module('mineru_html.constants')
+        _c.ITEM_ID_ATTR = '_item_id'
+        _c.TAIL_BLOCK_TAG = 'cc-alg-uc-text'
+        _c.SELECT_ATTR = 'cc-select'
+        _c.CLASS_ATTR = 'mark-selected'
+        class TagType(Enum):
+            Main = 'main'
+            Other = 'other'
+        _c.TagType = TagType
+        _e = _make_module('mineru_html.exceptions')
+        class MinerUHTMLError(Exception): pass
+        for cn in ['MinerUHTMLPreprocessError', 'MinerUHTMLPromptError',
+                    'MinerUHTMLResponseParseError', 'MinerUHTMLMapToMainError',
+                    'MinerUHTMLFallbackError']:
+            setattr(_e, cn, type(cn, (MinerUHTMLError,), {}))
+        _e.MinerUHTMLError = MinerUHTMLError
+        _b = _make_module('mineru_html.base')
+        @dataclass
+        class MinerUHTMLProcessData: simpled_html: str = ''; map_html: str = ''
+        @dataclass
+        class MinerUHTMLGenerateInput: full_prompt: str = ''
+        @dataclass
+        class MinerUHTMLParseResult: item_label: dict = field(default_factory=dict)
+        @dataclass
+        class MinerUHTMLOutput: main_html: str = ''
+        @dataclass
+        class MinerUHTMLInput: raw_html: str = ''
+        @dataclass
+        class MinerUHTMLCase:
+            case_id: str = ''
+            input_data: MinerUHTMLInput = field(default_factory=MinerUHTMLInput)
+            process_data: MinerUHTMLProcessData = field(default_factory=MinerUHTMLProcessData)
+            generate_input: MinerUHTMLGenerateInput = field(default_factory=MinerUHTMLGenerateInput)
+            generate_output: Optional[object] = None
+            parse_result: MinerUHTMLParseResult = field(default_factory=MinerUHTMLParseResult)
+            output_data: MinerUHTMLOutput = field(default_factory=MinerUHTMLOutput)
+        for cls in [MinerUHTMLCase, MinerUHTMLProcessData, MinerUHTMLGenerateInput,
+                    MinerUHTMLParseResult, MinerUHTMLOutput, MinerUHTMLInput]:
+            setattr(_b, cls.__name__, cls)
+        _make_module('mineru_html.process')
+        def _load_file(mod_name, filename):
+            path = os.path.join(MINERU_PATH, 'mineru_html', 'process', filename)
+            spec = importlib.util.spec_from_file_location(mod_name, path)
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules[mod_name] = mod
+            spec.loader.exec_module(mod)
+            return mod
+        _load_file('mineru_html.process.html_utils', 'html_utils.py')
+        _load_file('mineru_html.process.simplify_html', 'simplify_html.py')
 
 
 def normalize(text):
     return re.sub(r'\s+', ' ', text).strip().lower()
 
 
-def extract_block_texts(simplified_html):
-    """Extract block texts with their _item_id from simplified HTML."""
-    soup = BeautifulSoup(simplified_html, 'html.parser')
-    blocks = {}
-    for el in soup.find_all(attrs={'_item_id': True}):
-        item_id = el.get('_item_id')
-        text = el.get_text()
-        if text.strip():
-            blocks[item_id] = text
-    return blocks
+def process_page(args):
+    """Process a single page. Returns list of (feature_row, label) or None."""
+    url, html, labels = args
 
+    _init_mineru()
+    simplify_html = sys.modules['mineru_html.process.simplify_html'].simplify_html
+    from bs4 import BeautifulSoup
 
-def run_export_features(html):
-    result = subprocess.run(
-        [HUMMINGBIRD_BIN], input=html, capture_output=True, text=True, timeout=30,
-    )
-    if result.returncode != 0:
-        return []
+    # Step 1: Dripper simplification for label texts
     try:
-        return json.loads(result.stdout)
-    except json.JSONDecodeError:
-        return []
+        simplified, _ = simplify_html(html)
+    except Exception:
+        return None, 'simplify_error'
 
+    soup = BeautifulSoup(simplified, 'html.parser')
+    dripper_texts = {}
+    for el in soup.find_all(attrs={'_item_id': True}):
+        iid = el['_item_id']
+        text = normalize(el.get_text())
+        if text:
+            dripper_texts[iid] = text
 
-def feature_row(block, label):
-    f = block["features"]
-    row = []
-    for col in FEATURE_COLS:
-        val = f[col]
-        if isinstance(val, bool):
-            row.append(int(val))
-        elif col == "tag_type":
-            row.append(TAG_TYPE_MAP.get(val, 6))
-        else:
-            row.append(val)
-    row.append(label)
-    return row
+    if not dripper_texts:
+        return None, 'no_dripper_texts'
+
+    # Step 2: Hummingbird features on raw HTML
+    try:
+        result = subprocess.run(
+            [HUMMINGBIRD_BIN], input=html, capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode != 0:
+            return None, 'hbird_error'
+        rust_blocks = json.loads(result.stdout)
+    except Exception:
+        return None, 'hbird_error'
+
+    if not rust_blocks:
+        return None, 'no_blocks'
+
+    # Step 3: Match by text overlap
+    rows = []
+    for rb in rust_blocks:
+        rb_text = normalize(rb["text"])
+        if not rb_text or len(rb_text) < 5:
+            continue
+
+        best_iid = None
+        best_overlap = 0
+
+        for iid, d_text in dripper_texts.items():
+            if iid not in labels:
+                continue
+            if rb_text in d_text or d_text in rb_text:
+                overlap = min(len(rb_text), len(d_text))
+                if overlap > best_overlap:
+                    best_overlap = overlap
+                    best_iid = iid
+            else:
+                rb_words = set(rb_text.split())
+                d_words = set(d_text.split())
+                if not rb_words:
+                    continue
+                overlap_ratio = len(rb_words & d_words) / len(rb_words)
+                if overlap_ratio > 0.7:
+                    overlap = len(rb_words & d_words)
+                    if overlap > best_overlap:
+                        best_overlap = overlap
+                        best_iid = iid
+
+        if best_iid is not None:
+            label = 1 if labels[best_iid] == 'main' else 0
+            f = rb["features"]
+            row = []
+            for col in FEATURE_COLS:
+                val = f[col]
+                if isinstance(val, bool):
+                    row.append(int(val))
+                elif col == "tag_type":
+                    row.append(TAG_TYPE_MAP.get(val, 6))
+                else:
+                    row.append(val)
+            row.append(label)
+            rows.append(row)
+
+    if not rows:
+        return None, 'no_match'
+
+    return rows, 'ok'
 
 
 def main():
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--min-agreement', type=float, default=MIN_AGREEMENT)
-    parser.add_argument('--limit', type=int, default=0)
-    args = parser.parse_args()
+    if not os.path.exists(HUMMINGBIRD_BIN):
+        print("ERROR: Build first: cargo build --release")
+        sys.exit(1)
 
-    # Step 1: Load agreement rates from double-check
-    print('Loading double-check results...', flush=True)
-    agreement_by_url = {}
-    with open(DOUBLECHECK_PATH) as f:
-        for line in f:
-            r = json.loads(line)
-            if r.get('status') == 'ok':
-                agreement_by_url[r['url']] = r['agreement_rate']
-    print(f'  {len(agreement_by_url)} pages with agreement data', flush=True)
+    # Load all labels
+    all_labels = {}
+    for path in ["cc_labeled_filtered.jsonl", "cc_labeled_dripper_83k.jsonl"]:
+        full_path = os.path.join(SCRIPT_DIR, path)
+        if not os.path.exists(full_path):
+            continue
+        with open(full_path) as f:
+            for line in f:
+                rec = json.loads(line)
+                if rec.get('status') == 'ok' and rec.get('labels'):
+                    all_labels[rec['url']] = rec['labels']
+    print(f"Loaded labels for {len(all_labels)} pages", flush=True)
 
-    # Step 2: Load DeepSeek labels, filter by agreement
-    print(f'Loading DeepSeek labels (min agreement >= {args.min_agreement})...', flush=True)
-    labels_by_url = {}
-    filtered_out = 0
-    no_agreement = 0
-    with open(LABELED_PATH) as f:
-        for line in f:
-            r = json.loads(line)
-            if r.get('status') != 'ok':
-                continue
-            url = r['url']
-            agr = agreement_by_url.get(url)
-            if agr is None:
-                no_agreement += 1
-                continue
-            if agr < args.min_agreement:
-                filtered_out += 1
-                continue
-            labels_by_url[url] = r.get('labels', {})
+    # Collect work items
+    work = []
+    for html_path in ["cc_sampled.jsonl", "cc_sampled_100k.jsonl"]:
+        full_path = os.path.join(SCRIPT_DIR, html_path)
+        if not os.path.exists(full_path):
+            continue
+        print(f"Reading {html_path}...", flush=True)
+        with open(full_path) as fin:
+            for line in fin:
+                rec = json.loads(line)
+                url = rec.get('url', '')
+                html = rec.get('html', '')
+                if url in all_labels and html and len(html) >= 100:
+                    work.append((url, html, all_labels[url]))
 
-    print(f'  Kept: {len(labels_by_url)} pages', flush=True)
-    print(f'  Filtered (low agreement): {filtered_out}', flush=True)
-    print(f'  No agreement data: {no_agreement}', flush=True)
+    print(f"Processing {len(work)} pages with {NUM_WORKERS} workers...", flush=True)
 
-    # Step 3: Load HTML
-    print('Loading HTML from cc_sampled.jsonl...', flush=True)
-    html_by_url = {}
-    with open(SAMPLED_PATH) as f:
-        for line in f:
-            r = json.loads(line)
-            if r['url'] in labels_by_url:
-                html_by_url[r['url']] = r['html']
-    print(f'  Found HTML for {len(html_by_url)} pages', flush=True)
+    total_blocks = 0
+    total_keep = 0
+    total_discard = 0
+    status_counts = {}
 
-    urls = list(html_by_url.keys())
-    if args.limit > 0:
-        urls = urls[:args.limit]
-        print(f'  Limited to {len(urls)}', flush=True)
-
-    # Step 4: Process each page
-    print(f'\nProcessing {len(urls)} pages...', flush=True)
-    t_start = time.time()
-    stats = {
-        'pages_ok': 0, 'simplify_fail': 0, 'features_fail': 0,
-        'no_match': 0, 'total_blocks': 0, 'matched_blocks': 0,
-        'keep': 0, 'discard': 0,
-    }
-
-    with open(OUTPUT_PATH, 'w', newline='') as fout:
+    with open(OUTPUT_PATH, "w", newline="") as fout:
         writer = csv.writer(fout)
-        writer.writerow(FEATURE_COLS + ['label'])
+        writer.writerow(FEATURE_COLS + ["label"])
 
-        for i, url in enumerate(urls):
-            html = html_by_url[url]
-            ds_labels = labels_by_url[url]  # item_id -> "main"/"other"
+        with Pool(NUM_WORKERS) as pool:
+            for i, (rows, status) in enumerate(pool.imap_unordered(process_page, work, chunksize=16)):
+                status_counts[status] = status_counts.get(status, 0) + 1
 
-            # Simplify to get block texts by _item_id
-            try:
-                simplified, _ = simplify_html(html)
-            except Exception:
-                stats['simplify_fail'] += 1
-                continue
+                if rows:
+                    for row in rows:
+                        writer.writerow(row)
+                        if row[-1] == 1:
+                            total_keep += 1
+                        else:
+                            total_discard += 1
+                    total_blocks += len(rows)
 
-            block_texts = extract_block_texts(simplified)
-            if not block_texts:
-                stats['simplify_fail'] += 1
-                continue
+                if (i + 1) % 1000 == 0:
+                    pages_ok = status_counts.get('ok', 0)
+                    print(f"  {i+1}/{len(work)} done, {pages_ok} ok, "
+                          f"{total_blocks} blocks ({total_keep} keep / {total_discard} discard), "
+                          f"errors: {dict((k,v) for k,v in status_counts.items() if k != 'ok')}",
+                          flush=True)
 
-            # Build label map: normalized_text -> label (1=keep, 0=discard)
-            label_map = {}
-            for item_id, text in block_texts.items():
-                label_str = ds_labels.get(item_id)
-                if label_str is None:
-                    continue
-                norm = normalize(text)
-                if norm not in label_map:
-                    label_map[norm] = []
-                label_map[norm].append(1 if label_str == 'main' else 0)
-
-            if not label_map:
-                stats['no_match'] += 1
-                continue
-
-            # Run hummingbird feature extraction on raw HTML
-            rust_blocks = run_export_features(html)
-            if not rust_blocks:
-                stats['features_fail'] += 1
-                continue
-
-            # Match Rust blocks to labeled blocks by text
-            page_matched = 0
-            for rb in rust_blocks:
-                norm = normalize(rb['text'])
-                if norm in label_map and label_map[norm]:
-                    label = label_map[norm].pop(0)
-                    writer.writerow(feature_row(rb, label))
-                    page_matched += 1
-                    if label == 1:
-                        stats['keep'] += 1
-                    else:
-                        stats['discard'] += 1
-
-            stats['total_blocks'] += len(rust_blocks)
-            stats['matched_blocks'] += page_matched
-
-            if page_matched > 0:
-                stats['pages_ok'] += 1
-            else:
-                stats['no_match'] += 1
-
-            if (i + 1) % 500 == 0:
-                elapsed = time.time() - t_start
-                rate = (i + 1) / max(elapsed, 1)
-                eta = (len(urls) - i - 1) / max(rate, 0.001)
-                match_pct = stats['matched_blocks'] / max(stats['total_blocks'], 1) * 100
-                print(f'  {i+1:>6}/{len(urls)} pages_ok={stats["pages_ok"]} '
-                      f'matched={stats["matched_blocks"]}/{stats["total_blocks"]} ({match_pct:.0f}%) '
-                      f'keep={stats["keep"]} discard={stats["discard"]} '
-                      f'{rate:.1f}pg/s ETA={eta/60:.0f}m', flush=True)
-
-    elapsed = time.time() - t_start
-    match_pct = stats['matched_blocks'] / max(stats['total_blocks'], 1) * 100
-
-    print(f'\nDone in {elapsed:.0f}s', flush=True)
-    print(f'  Pages OK: {stats["pages_ok"]}', flush=True)
-    print(f'  Simplify fail: {stats["simplify_fail"]}', flush=True)
-    print(f'  Features fail: {stats["features_fail"]}', flush=True)
-    print(f'  No match: {stats["no_match"]}', flush=True)
-    print(f'  Blocks: {stats["matched_blocks"]}/{stats["total_blocks"]} matched ({match_pct:.1f}%)', flush=True)
-    print(f'  KEEP: {stats["keep"]} ({stats["keep"]/max(stats["matched_blocks"],1)*100:.1f}%)', flush=True)
-    print(f'  DISCARD: {stats["discard"]} ({stats["discard"]/max(stats["matched_blocks"],1)*100:.1f}%)', flush=True)
-    print(f'  Saved to {OUTPUT_PATH}', flush=True)
+    pages_ok = status_counts.get('ok', 0)
+    print(f"\nDone: {pages_ok} pages, {total_blocks} blocks", flush=True)
+    print(f"  KEEP: {total_keep} ({total_keep/max(total_blocks,1)*100:.1f}%)")
+    print(f"  DISCARD: {total_discard} ({total_discard/max(total_blocks,1)*100:.1f}%)")
+    print(f"  Status: {status_counts}")
+    print(f"  Saved to {OUTPUT_PATH}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

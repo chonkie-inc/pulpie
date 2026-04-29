@@ -26,6 +26,7 @@ const BLOCK_TAGS: &[&str] = &[
 /// Tags that are containers — recurse if they have block-level descendants.
 const CONTAINER_TAGS: &[&str] = &[
     "div", "section", "article", "main", "body", "form",
+    "nav", "footer", "aside", "header",
 ];
 
 /// Positive content signal keywords in class/id attributes.
@@ -111,6 +112,10 @@ pub struct Features {
     pub has_boilerplate_class: bool,
     pub parent_tag_type: f64,
     pub semantic_ancestor: f64,
+    pub in_nav: bool,
+    pub in_footer: bool,
+    pub in_aside: bool,
+    pub in_header: bool,
 
     // --- Context (filled in second pass) ---
     pub prev_block_text_len: usize,
@@ -136,58 +141,47 @@ pub struct Features {
 impl Features {
     /// Produce the feature vector matching the trained GBM model.
     /// Order must match selected_features.json exactly.
-    pub fn to_feature_vec(&self) -> [f64; 40] {
+    pub fn to_feature_vec(&self) -> [f64; 30] {
+        let tag_type_val = match self.tag_type {
+            TagType::Paragraph => 0.0,
+            TagType::Heading => 1.0,
+            TagType::ListItem => 2.0,
+            TagType::Preformatted => 3.0,
+            TagType::TableCell => 4.0,
+            TagType::Blockquote => 5.0,
+            TagType::Other => 6.0,
+        };
         [
-            self.text_len as f64,
-            self.word_count as f64,
-            self.sentence_count as f64,
-            self.comma_count as f64,
-            self.avg_word_length,
-            self.stop_word_ratio,
-            self.capitalization_ratio,
-            if self.has_date_pattern { 1.0 } else { 0.0 },
-            self.link_len as f64,
-            self.link_count as f64,
             self.link_ratio,
-            self.tag_count as f64,
-            self.paragraph_count as f64,
-            self.heading_count as f64,
-            self.list_item_count as f64,
-            self.image_count as f64,
-            self.text_to_tag_ratio,
-            self.class_id_score,
-            self.parent_class_id_score,
-            match self.tag_type {
-                TagType::Paragraph => 0.0,
-                TagType::Heading => 1.0,
-                TagType::ListItem => 2.0,
-                TagType::Preformatted => 3.0,
-                TagType::TableCell => 4.0,
-                TagType::Blockquote => 5.0,
-                TagType::Other => 6.0,
-            },
-            self.tag_type_score,
-            self.dom_depth as f64,
-            self.position,
-            if self.is_first_10pct { 1.0 } else { 0.0 },
-            if self.is_last_10pct { 1.0 } else { 0.0 },
-            self.parent_tag_type,
-            self.semantic_ancestor,
-            self.prev_block_text_len as f64,
-            self.prev_block_link_ratio,
-            self.next_block_text_len as f64,
-            self.next_block_link_ratio,
-            self.blocks_since_heading as f64,
-            self.blocks_until_heading as f64,
-            // Section-level features
-            self.section_heading_text_len as f64,
-            self.section_block_count as f64,
-            self.section_link_density,
-            // Page-level features
             self.page_total_blocks as f64,
-            self.page_total_text_len as f64,
+            self.parent_tag_type,
             self.page_total_link_ratio,
+            tag_type_val,
+            self.section_block_count as f64,
+            self.page_total_text_len as f64,
+            self.dom_depth as f64,
+            self.section_link_density,
+            self.position,
+            self.tag_type_score,
+            self.section_heading_text_len as f64,
+            self.blocks_since_heading as f64,
+            self.word_count as f64,
+            self.next_block_link_ratio,
+            self.prev_block_link_ratio,
+            self.text_to_tag_ratio,
+            self.semantic_ancestor,
+            self.blocks_until_heading as f64,
             self.page_heading_count as f64,
+            self.parent_class_id_score,
+            self.next_block_text_len as f64,
+            self.link_count as f64,
+            self.text_len as f64,
+            self.tag_count as f64,
+            self.avg_word_length,
+            self.in_nav as u8 as f64,
+            self.in_footer as u8 as f64,
+            self.in_aside as u8 as f64,
+            self.in_header as u8 as f64,
         ]
     }
 }
@@ -527,17 +521,21 @@ fn compute_features(element: &ElementRef<'_>, text: &str, index: usize, total: u
         .unwrap_or(0.0);
 
     // Nearest semantic ancestor (walk up, break on first match)
+    let mut in_nav = false;
+    let mut in_footer = false;
+    let mut in_aside = false;
+    let mut in_header = false;
     let semantic_ancestor = {
         let mut found = 0.0;
         for anc in element.ancestors() {
             if let Some(el) = anc.value().as_element() {
                 match el.name.local.as_ref() {
-                    "article" => { found = 1.0; break; }
-                    "main" => { found = 2.0; break; }
-                    "nav" => { found = 3.0; break; }
-                    "aside" => { found = 4.0; break; }
-                    "footer" => { found = 5.0; break; }
-                    "header" => { found = 6.0; break; }
+                    "nav" => { in_nav = true; if found == 0.0 { found = 3.0; } }
+                    "footer" => { in_footer = true; if found == 0.0 { found = 5.0; } }
+                    "aside" => { in_aside = true; if found == 0.0 { found = 4.0; } }
+                    "header" => { in_header = true; if found == 0.0 { found = 6.0; } }
+                    "article" => { if found == 0.0 { found = 1.0; } }
+                    "main" => { if found == 0.0 { found = 2.0; } }
                     _ => {}
                 }
             }
@@ -580,6 +578,10 @@ fn compute_features(element: &ElementRef<'_>, text: &str, index: usize, total: u
         has_boilerplate_class,
         parent_tag_type,
         semantic_ancestor,
+        in_nav,
+        in_footer,
+        in_aside,
+        in_header,
 
         // Section context — filled in second pass
         section_heading_text_len: 0,

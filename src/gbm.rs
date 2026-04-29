@@ -43,6 +43,7 @@ impl Tree {
 pub struct GbmModel {
     trees: Vec<Tree>,
     num_features: usize,
+    max_leaf_abs: f64,
 }
 
 impl GbmModel {
@@ -69,7 +70,13 @@ impl GbmModel {
             i += 1;
         }
 
-        GbmModel { trees, num_features }
+        let max_leaf_abs = trees
+            .iter()
+            .flat_map(|t| t.leaf_value.iter())
+            .map(|v| v.abs())
+            .fold(0.0_f64, f64::max);
+
+        GbmModel { trees, num_features, max_leaf_abs }
     }
 
     /// Predict probability of class 1 (content).
@@ -84,6 +91,14 @@ impl GbmModel {
         self.predict_proba(features) > threshold
     }
 
+    /// Predict using only the first `n` trees (for speed/accuracy tradeoff).
+    pub fn predict_n(&self, features: &[f64], threshold: f64, n_trees: usize) -> bool {
+        debug_assert_eq!(features.len(), self.num_features);
+        let n = n_trees.min(self.trees.len());
+        let raw: f64 = self.trees[..n].iter().map(|t| t.predict(features)).sum();
+        sigmoid(raw) > threshold
+    }
+
     pub fn num_trees(&self) -> usize {
         self.trees.len()
     }
@@ -95,6 +110,10 @@ impl GbmModel {
 
 fn sigmoid(x: f64) -> f64 {
     1.0 / (1.0 + (-x).exp())
+}
+
+fn logit(p: f64) -> f64 {
+    (p / (1.0 - p)).ln()
 }
 
 fn parse_tree(lines: &[&str], pos: &mut usize) -> Tree {
