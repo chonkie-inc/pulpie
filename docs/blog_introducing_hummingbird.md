@@ -1,48 +1,37 @@
 # Introducing Hummingbird: Pareto-Optimal Models for Cleaning the Web
 
-Most of the web is not content. A typical HTML page is 60-70% navigation, ads, cookie banners, sidebars, and footers. Before an LLM can learn from the web — or reason over it at inference time — something has to separate the signal from the noise.
+Every major open training corpus — C4 (Raffel et al., 2020), RefinedWeb (Penedo et al., 2023), FineWeb (Penedo et al., 2024), Dolma (Soldaini et al., 2024), DCLM (Li et al., 2024) — treats HTML-to-text extraction as a solved problem. Run Trafilatura, move on to the interesting stuff: filtering, deduplication, data mixing. But it isn't solved. The AICC paper (Ma et al., 2025) showed that simply switching from Trafilatura to a model-based extractor, with identical downstream processing, improved LLM benchmark accuracy by 1.08pp across 13 tasks. Extraction quality is as impactful as aggressive filtering — and almost nobody is working on it.
 
-This is the content extraction problem. It sounds simple ("just get the article text") but turns out to be surprisingly hard at scale. Heuristic tools like Trafilatura and Readability work on easy pages and fall apart on complex ones. LLM-based approaches like Dripper get much better quality, but at a cost that makes web-scale processing impractical.
+A typical HTML page is 60-70% navigation, ads, cookie banners, sidebars, and footers. Heuristic tools like Trafilatura and Readability work on easy pages and fall apart on complex ones. LLM-based approaches like Dripper get much better quality, but at a cost that makes web-scale processing impractical.
 
 We built Hummingbird to close this gap: a family of encoder models that match LLM-level extraction quality at a fraction of the cost. The smallest model (210M parameters, 433MB) runs at 15 pages/sec on a $0.35/hr L4 GPU. Cleaning 1 billion pages costs about $6,500. The equivalent job with Dripper costs $105,000 on the same hardware.
 
 This post covers how we got there.
 
-## Table of Contents
-
-- [The landscape](#the-landscape)
-- [Why encoders?](#why-encoders)
-- [Architecture](#architecture)
-- [Training](#training)
-- [Results](#results)
-- [The economics of encoders vs decoders](#the-economics-of-encoders-vs-decoders)
-- [Models](#models)
-- [Open questions](#open-questions)
-
 ## The landscape
 
-Content extraction methods fall into three categories, each with a different quality-cost tradeoff.
+Content extraction methods fall into three categories, each with a different quality-cost tradeoff (see Bevendorff et al., 2023 for a comprehensive comparison).
 
-**Heuristic extractors** — Trafilatura (Barbaresi, 2021), Readability, magic-html — use hand-written rules to strip boilerplate. They look for semantic tags (`<article>`, `<main>`), DOM structure, and text density signals. They're fast, free, and require no GPU. But they have no notion of context. A navigation table and a data table look the same to a rule that just counts `<td>` tags.
+**Heuristic extractors** — Trafilatura (Barbaresi, 2021), Readability (Mozilla, based on Arc90), jusText (Pomikálek, 2011), magic-html — use hand-written rules to strip boilerplate. They look for semantic tags (`<article>`, `<main>`), DOM structure, and text density signals. They're fast, free, and require no GPU. But they have no notion of context. A navigation table and a data table look the same to a rule that just counts `<td>` tags.
 
 **LLM-based classifiers** — Dripper (MinerU-HTML, 2025) takes a different approach. It simplifies the HTML, assigns an `_item_id` to each block, then prompts a fine-tuned 0.6B autoregressive model to label each block as "main" or "other." This works well — the model sees the full page and can use context to decide. But it generates tokens sequentially, one at a time, bounded by memory bandwidth rather than compute.
 
-**Feature-based classifiers** — tools like boilerpipe and our own GBM approach extract structural features (link density, DOM depth, position) and train a classifier on them. These are fast but cap out at the same ceiling as heuristics. Thirty numeric features encode roughly the same signals that Readability hard-codes in XPaths. Without reading the actual text, a feature-based model can't distinguish a content table from a navigation table.
+**Feature-based classifiers** — tools like boilerpipe (Kohlschütter et al., 2010) and our own GBM approach extract structural features (link density, DOM depth, position) and train a classifier on them. These are fast but cap out at the same ceiling as heuristics. Thirty numeric features encode roughly the same signals that Readability hard-codes in XPaths. Without reading the actual text, a feature-based model can't distinguish a content table from a navigation table.
 
-The following table shows where each method lands on WebMainBench, a benchmark of 7,809 annotated web pages (Deng et al., 2025). We report ROUGE-5 F1 on the English subset (200 pages, controlled comparison):
+The following table shows where each method lands on WebMainBench, a benchmark of 7,809 annotated web pages (Ma et al., 2025). We report ROUGE-5 F1 on the English subset (200 pages, controlled comparison):
 
 | Method | Type | All | Simple | Mid | Hard |
 |--------|------|-----|--------|-----|------|
 | DeepSeek V3.2 | LLM (236B) | 0.865 | 0.932 | 0.875 | 0.786 |
 | **Hummingbird Latte Large** | **Encoder (2.1B)** | **0.862** | **0.928** | **0.856** | **0.807** |
-| Dripper | Decoder (0.6B) | 0.854 | 0.922 | 0.868 | 0.768 |
 | **Hummingbird Latte Small** | **Encoder (210M)** | **0.864** | **0.885** | **0.841** | **0.866** |
+| Dripper | Decoder (0.6B) | 0.854 | 0.922 | 0.868 | 0.768 |
 | Hummingbird Latte Base | Encoder (610M) | 0.847 | 0.907 | 0.848 | 0.787 |
 | magic-html | Heuristic | 0.714 | 0.786 | 0.712 | 0.643 |
 | Readability | Heuristic | 0.654 | 0.742 | 0.655 | 0.565 |
 | Trafilatura | Heuristic | 0.640 | 0.731 | 0.642 | 0.547 |
 
-The 210M Hummingbird model scores 0.864 — on par with DeepSeek V3.2, a 236B-parameter LLM. It is ~1000x smaller.
+The 210M Hummingbird model scores 0.864 — matching the quality of DeepSeek V3.2, which requires a 236B-parameter LLM running on high-end hardware. Hummingbird achieves this with a 210M encoder that fits in 433MB of VRAM.
 
 ![Quality vs Cost of Web Content Extraction](fig1_quality_vs_cost.png)
 
@@ -110,7 +99,7 @@ The teacher reached 0.864 ROUGE-5 on 200 held-out WebMainBench pages. This *exce
 
 We distilled the 2.1B teacher into two smaller students: a 610M (Latte Base) and a 210M (Latte Small).
 
-Distillation used KL divergence loss (α=0.7) combined with hard-label cross-entropy (α=0.3), temperature 2.0, same data. Each distillation took about 2 hours on 4× A100.
+Following Hinton et al. (2015), distillation used KL divergence loss (α=0.7) combined with hard-label cross-entropy (α=0.3), temperature 2.0, same data. Each distillation took about 2 hours on 4× A100.
 
 The results were surprising:
 
@@ -123,20 +112,6 @@ The results were surprising:
 ![Distillation: Smaller Can Be Better](fig4_distillation.png)
 
 The 210M student matched the 2.1B teacher exactly. The 610M was actually worse. We don't fully understand why the smaller model distilled better — one hypothesis is that the 210M's lower capacity acts as a regularizer, while the 610M has enough capacity to overfit to noise in the teacher's outputs. Regardless, the practical implication is clear: the 210M model is the one to use.
-
-### What didn't work
-
-We tried several approaches before landing on this one:
-
-- **Structural features + GBM**: 40 hand-engineered features (link density, DOM depth, position, tag type). Reached 0.81 ROUGE-5 on WebMainBench — but this was trained on the test set. On truly out-of-sample data (CC-only model evaluated on WMB), it scored 0.68 — below magic-html's 0.71 with zero training. Feature-based approaches couldn't capture page-level context.
-
-- **CRF sequence smoothing**: A CRF on top of GBM block probabilities flipped ~5% of labels but with net-zero improvement. Some corrections, some regressions.
-
-- **Text embeddings (model2vec, TF-IDF)**: Potion-base-8M embeddings gave 0.618 ROUGE-5 alone. Adding them to GBM features gave <0.1pp improvement. Structural features already captured what the embeddings knew.
-
-- **BIO sequence tagging**: Extreme class imbalance (B-MAIN was 0.7% of tokens). F1 = 0.014 even with class weights. Abandoned immediately.
-
-The recurring lesson: block classification needs page-level context. Features and embeddings don't provide it. A bidirectional encoder does.
 
 ## Results
 
@@ -221,14 +196,48 @@ All models are built on EuroBERT (Boizard et al., 2025) and use the same `<|sep|
 
 Latte Small is the recommended model. It matches the teacher at 1/10th the size, fits in 433MB VRAM, and runs on any GPU (L4, T4, RTX 3090, or even integrated graphics for small batches).
 
-## Open questions
+## Get started
 
-**Flash Attention for long sequences.** 37% of real-page chunks land in the 8K-token bucket, where quadratic attention scaling dominates inference cost. Flash Attention 2 would bring this from O(n²) memory to O(n), with a likely 2-3x speedup on long sequences. We couldn't benchmark it on our test hardware (L4s don't ship with flash-attn prebuilt) but expect it to push single-GPU throughput above 20 pps.
+The Hummingbird models are available on HuggingFace. To start cleaning web pages:
 
-**Larger training sets.** Dripper was trained on 986K DeepSeek-labeled pages. We used 15K. More diverse training data could improve generalization — though our 210M model already exceeds its teacher, suggesting we may be closer to the labeling ceiling than the learning ceiling.
+```bash
+pip install hummingbird-extract
+```
 
-**Why does the 210M distill better than the 610M?** We reported this result but don't have a satisfying explanation. The implicit regularization hypothesis is plausible but untested. Understanding this could inform future distillation decisions.
+```python
+from hummingbird import extract
 
-**Multilingual evaluation.** All our benchmarks are on English pages. WebMainBench includes 1,162 non-English pages where Dripper reports higher scores (boosted by jieba tokenization in the Chinese-heavy subset). EuroBERT was pretrained on 28 European languages — we expect reasonable multilingual transfer but haven't measured it.
+markdown = extract(html)
+```
 
-**Production pipelining.** Our benchmarks run CPU and GPU stages sequentially. A pipelined architecture (CPU preprocessing in parallel with GPU inference, multiple GPUs) would push effective throughput from 15 to 120+ pages/sec on 8× L4. The infrastructure is straightforward but hasn't been built yet.
+If you're processing web data at scale — building training corpora, running RAG pipelines over live pages, or cleaning Common Crawl snapshots — and want to talk about how Hummingbird fits into your stack, reach out. We're at [chonkie.ai](https://chonkie.ai), [@chonabordi](https://twitter.com/chonabordi) on Twitter, or come find us on [Discord](https://discord.gg/chonkie).
+
+## Acknowledgements
+
+Hummingbird builds directly on the work of the MinerU-HTML and Dripper team (Ma et al., 2025). Their `simplify_html` preprocessing, block-level annotation scheme, and the WebMainBench benchmark are foundational to everything in this post. We also use their Dripper 0.6B model for cross-validating our training labels. Open science makes work like this possible — we're grateful they released their tools and data.
+
+## References
+
+[1] Ma et al. "AICC: Parse HTML Finer, Make Models Better — A 7.3T AI-Ready Corpus Built by a Model-Based HTML Parser." arXiv preprint arXiv:2511.16397 (2025).
+
+[2] Boizard et al. "EuroBERT: Scaling Multilingual Encoders for European Languages." arXiv preprint arXiv:2503.05500 (2025).
+
+[3] Hinton et al. "Distilling the Knowledge in a Neural Network." arXiv preprint arXiv:1503.02531 (2015).
+
+[4] Raffel et al. "Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer." JMLR 2020.
+
+[5] Penedo et al. "The RefinedWeb Dataset for Falcon LLM: Outperforming Curated Corpora with Web Data Only." NeurIPS 2023.
+
+[6] Penedo et al. "The FineWeb Datasets: Decanting the Web for the Finest Text Data at Scale." arXiv preprint arXiv:2406.17557 (2024).
+
+[7] Li et al. "DataComp-LM: In Search of the Next Generation of Training Sets for Language Models." NeurIPS 2024.
+
+[8] Soldaini et al. "Dolma: An Open Corpus of Three Trillion Tokens for Language Model Pretraining Research." ACL 2024.
+
+[9] Barbaresi. "Trafilatura: A Web Scraping Library and Command-Line Tool for Text Discovery and Extraction." ACL/IJCNLP 2021.
+
+[10] Kohlschütter et al. "Boilerplate Detection using Shallow Text Features." WSDM 2010.
+
+[11] Pomikálek. "Removing Boilerplate and Duplicate Content from Web Corpora." PhD thesis, Masaryk University, 2011.
+
+[12] Bevendorff et al. "An Empirical Comparison of Web Content Extraction Algorithms." SIGIR 2023.
