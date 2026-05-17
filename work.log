@@ -715,6 +715,32 @@ Dripper on L4 is 17% of its A100 speed (0.92 vs 5.38 pps), matching the memory b
 | 28× L4 (Hummingbird) | 423 | **27 days** | **$6,500** |
 | 420× L4 (Dripper) | 386 | 30 days | $105,000 |
 
+## TODO: Pulpie simplify.py Rewrite
+
+**Problem**: Pulpie's `simplify.py` (369 lines) produces fundamentally different block segmentation
+than MinerU-HTML's `simplify_html.py` (1172 lines) that the model was trained on. Using Pulpie's
+pipeline scores 0.731 ROUGE-5 vs 0.862 using MinerU's pipeline — a 13pp quality gap.
+
+**Root causes**:
+1. **Block segmentation logic**: MinerU does deep recursive splitting with table/list type analysis
+   (data table vs layout table), splits lists into individual `<li>` items. Pulpie treats lists as
+   atomic blocks, producing 71 blocks where MinerU produces 92 on the same page.
+2. **Tag removal**: MinerU removes `<nav>` tags. Pulpie doesn't. (But adding nav removal alone
+   didn't help — went from 0.731 to 0.727.)
+3. **Attribute handling**: MinerU uses allow-list (class, id, _item_id, charset only). Pulpie uses
+   deny-list, leaking data-anno-uid, style, cc-select etc. causing token bloat. (But switching to
+   allow-list alone also hurt — dropped to 0.708.)
+4. **Combined effect**: The issues compound. The model expects MinerU's specific segmentation
+   boundaries, and fixing attrs/nav in isolation without fixing segmentation makes things worse.
+
+**Fix options**:
+- Port MinerU's segmentation logic faithfully into Pulpie (significant rewrite, ~800 lines)
+- Vendor MinerU-HTML as an optional dependency and use it directly
+- Hybrid: keep Pulpie's clean API but swap simplify internals to match MinerU's output
+
+**Priority**: High — this is the main blocker for Pulpie being usable as a standalone library.
+The current workaround (using MinerU's simplify externally) works for eval but not for users.
+
 ## Model Zoo
 
 | Name | HuggingFace | Size | ROUGE-5 | Notes |

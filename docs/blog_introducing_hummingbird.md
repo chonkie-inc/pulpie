@@ -18,20 +18,19 @@ Content extraction methods fall into three categories, each with a different qua
 
 **Feature-based classifiers** — tools like boilerpipe (Kohlschütter et al., 2010) and our own GBM approach extract structural features (link density, DOM depth, position) and train a classifier on them. These are fast but cap out at the same ceiling as heuristics. Thirty numeric features encode roughly the same signals that Readability hard-codes in XPaths. Without reading the actual text, a feature-based model can't distinguish a content table from a navigation table.
 
-The following table shows where each method lands on WebMainBench, a benchmark of 7,809 annotated web pages (Ma et al., 2025). We report ROUGE-5 F1 on the English subset (200 pages, controlled comparison):
+The following table shows where each method lands on WebMainBench, a benchmark of 7,809 annotated web pages (Ma et al., 2025). We report ROUGE-5 F1 on the full English subset (6,647 pages):
 
-| Method | Type | All | Simple | Mid | Hard |
-|--------|------|-----|--------|-----|------|
-| DeepSeek V3.2 | LLM (236B) | 0.865 | 0.932 | 0.875 | 0.786 |
-| **Hummingbird Latte Large** | **Encoder (2.1B)** | **0.862** | **0.928** | **0.856** | **0.807** |
-| **Hummingbird Latte Small** | **Encoder (210M)** | **0.864** | **0.885** | **0.841** | **0.866** |
-| Dripper | Decoder (0.6B) | 0.854 | 0.922 | 0.868 | 0.768 |
-| Hummingbird Latte Base | Encoder (610M) | 0.847 | 0.907 | 0.848 | 0.787 |
-| magic-html | Heuristic | 0.714 | 0.786 | 0.712 | 0.643 |
-| Readability | Heuristic | 0.654 | 0.742 | 0.655 | 0.565 |
-| Trafilatura | Heuristic | 0.640 | 0.731 | 0.642 | 0.547 |
+| Method | Type | All | Simple | Mid | Hard | Empty |
+|--------|------|-----|--------|-----|------|-------|
+| **Hummingbird Latte Large** | **Encoder (2.1B)** | **0.873** | **0.914** | **0.878** | **0.827** | **21** |
+| Dripper | Decoder (0.6B) | 0.864 | 0.914 | 0.865 | 0.818 | 135 |
+| **Hummingbird Latte Base** | **Encoder (610M)** | **0.863** | **0.906** | **0.868** | **0.818** | **36** |
+| **Hummingbird Latte Small** | **Encoder (210M)** | **0.862** | **0.906** | **0.868** | **0.813** | **45** |
+| magic-html | Heuristic | 0.700 | 0.773 | 0.697 | 0.637 | 384 |
+| Raw html2text | Baseline | 0.620 | 0.779 | 0.605 | 0.491 | 0 |
+| Trafilatura | Heuristic | 0.619 | 0.721 | 0.619 | 0.526 | 16 |
 
-The 210M Hummingbird model scores 0.864 — matching the quality of DeepSeek V3.2, which requires a 236B-parameter LLM running on high-end hardware. Hummingbird achieves this with a 210M encoder that fits in 433MB of VRAM.
+All three Hummingbird models outperform Dripper on the full benchmark. The 210M model scores 0.862 — matching a 0.6B autoregressive model while being 3x smaller. The 2.1B teacher leads overall at 0.873, with the largest gains on Mid (+1.3pp) and Hard (+0.9pp) pages where context matters most. "Empty" counts pages where the method produced no output (context overflow for Dripper, no blocks detected for Hummingbird).
 
 ![Quality vs Cost of Web Content Extraction](fig1_quality_vs_cost.png)
 
@@ -93,7 +92,7 @@ We fine-tuned EuroBERT-2.1B (Boizard et al., 2025) on the agreed labels from 14,
 
 Training details: learning rate 2e-5, batch size 4 with gradient accumulation 2, class-weighted cross-entropy (main weight 1.748, other weight 0.700 to handle the 28.6% main-content class rate), gradient checkpointing, 4× A100.
 
-The teacher reached 0.864 ROUGE-5 on 200 held-out WebMainBench pages. This *exceeds* the DeepSeek V3.2 labels it was trained on (0.840 with the v0 prompt used during labeling). The encoder, by seeing the full page bidirectionally, learned patterns the autoregressive labeler missed.
+The teacher reached 0.873 ROUGE-5 on the full 6,647-page English WebMainBench subset. This *exceeds* the DeepSeek V3.2 labels it was trained on (0.840 with the v0 prompt used during labeling). The encoder, by seeing the full page bidirectionally, learned patterns the autoregressive labeler missed.
 
 ### Distillation: 2.1B → 210M
 
@@ -105,33 +104,32 @@ The results were surprising:
 
 | Model | Parameters | ROUGE-5 | vs Teacher |
 |-------|-----------|---------|------------|
-| Latte Large (teacher) | 2.1B | 0.864 | — |
-| Latte Base | 610M | 0.849 | -1.5pp |
-| **Latte Small** | **210M** | **0.864** | **+0.0pp** |
+| Latte Large (teacher) | 2.1B | 0.873 | — |
+| Latte Base | 610M | 0.863 | -1.0pp |
+| **Latte Small** | **210M** | **0.862** | **-1.1pp** |
 
 ![Distillation: Smaller Can Be Better](fig4_distillation.png)
 
-The 210M student matched the 2.1B teacher exactly. The 610M was actually worse. We don't fully understand why the smaller model distilled better — one hypothesis is that the 210M's lower capacity acts as a regularizer, while the 610M has enough capacity to overfit to noise in the teacher's outputs. Regardless, the practical implication is clear: the 210M model is the one to use.
+Both distilled models retain nearly all of the teacher's quality — within 1pp on the full 6,647-page benchmark. The 210M model at 0.862 matches Dripper (0.864) while being 3x smaller and significantly faster. The practical implication is clear: the 210M model offers the best quality-per-FLOP and is the one to use at scale.
 
 ## Results
 
 ### Quality
 
-On the controlled 200-page English subset of WebMainBench (same pages, same evaluation for all methods):
+On the full English subset of WebMainBench (6,647 pages, all difficulty levels):
 
-| Method | Size | ROUGE-5 |
-|--------|------|---------|
-| DeepSeek V3.2 | 236B | 0.865 |
-| Hummingbird Latte Small | 210M | 0.864 |
-| Hummingbird Latte Large | 2.1B | 0.862 |
-| Dripper | 0.6B | 0.854 |
-| magic-html | — | 0.714 |
-| Readability | — | 0.654 |
-| Trafilatura | — | 0.640 |
+| Method | Size | All | Simple | Mid | Hard | P | R |
+|--------|------|-----|--------|-----|------|---|---|
+| Hummingbird Latte Large | 2.1B | 0.873 | 0.914 | 0.878 | 0.827 | 0.865 | 0.917 |
+| Dripper | 0.6B | 0.864 | 0.914 | 0.865 | 0.818 | 0.860 | 0.901 |
+| Hummingbird Latte Base | 610M | 0.863 | 0.906 | 0.868 | 0.818 | 0.858 | 0.906 |
+| Hummingbird Latte Small | 210M | 0.862 | 0.906 | 0.868 | 0.813 | 0.854 | 0.910 |
+| magic-html | — | 0.700 | 0.773 | 0.697 | 0.637 | 0.778 | 0.704 |
+| Trafilatura | — | 0.619 | 0.721 | 0.619 | 0.526 | 0.688 | 0.610 |
 
-Hummingbird Latte Small outperforms Dripper by 1pp while being 3x smaller. It matches a 236B LLM that costs orders of magnitude more to run.
+Hummingbird Latte Large leads at 0.873, outperforming Dripper by 0.9pp overall. The gap widens on Mid (+1.3pp) and Hard (+0.9pp) pages where bidirectional context helps most. The 210M model matches Dripper (0.862 vs 0.864) while being 3x smaller.
 
-On hard pages specifically, the 210M model scores 0.866 — the highest of any method in the table. The teacher (2.1B) scores 0.807 on hard pages. We suspect the smaller model generalizes better due to implicit regularization during distillation.
+All Hummingbird models have higher recall than Dripper (0.906-0.917 vs 0.901), meaning they extract more of the actual content. Dripper's 135 empty pages (context overflow) versus Hummingbird Large's 21 show another practical advantage of the encoder approach — no context length limit issues.
 
 ### Speed
 
@@ -188,9 +186,9 @@ At web scale (billions of pages), this is the difference between a $6,500 job an
 
 | Name | HuggingFace | Parameters | ROUGE-5 | Notes |
 |------|-------------|-----------|---------|-------|
-| Latte Large | `chonkie-ai/hummingbird-latte-large-v1` | 2.1B | 0.864 | Teacher model |
-| Latte Base | `chonkie-ai/hummingbird-latte-base-v1` | 610M | 0.849 | Distilled from Large |
-| **Latte Small** | **`chonkie-ai/hummingbird-latte-small-v1`** | **210M** | **0.864** | **Recommended** |
+| Latte Large | `chonkie-ai/hummingbird-latte-large-v1` | 2.1B | 0.873 | Teacher model |
+| Latte Base | `chonkie-ai/hummingbird-latte-base-v1` | 610M | 0.863 | Distilled from Large |
+| **Latte Small** | **`chonkie-ai/hummingbird-latte-small-v1`** | **210M** | **0.862** | **Recommended** |
 
 All models are built on EuroBERT (Boizard et al., 2025) and use the same `<|sep|>` block-marker architecture. They share a tokenizer and are interchangeable in the pipeline.
 
