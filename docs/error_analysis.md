@@ -1,4 +1,4 @@
-# Hummingbird Error Analysis — WebMainBench (English, h2t-canonicalized)
+# Pulpie Error Analysis — WebMainBench (English, h2t-canonicalized)
 
 Date: 2026-04-09
 Sample: 500 English pages, html2text canonicalized output
@@ -8,8 +8,8 @@ Score: P=0.825, R=0.837, F1=0.818
 
 | Method | ROUGE-5 F1 (en) | Notes |
 |--------|-----------------|-------|
-| Hummingbird (h2t) | 0.806 (full 6647) | GBM classifier, html2text canon |
-| Hummingbird (native md) | 0.745 (full 6647) | Custom markdown converter |
+| Pulpie (h2t) | 0.806 (full 6647) | GBM classifier, html2text canon |
+| Pulpie (native md) | 0.745 (full 6647) | Custom markdown converter |
 | Dripper 0.6B (paper) | 0.878 (full 7809) | Includes non-English |
 | magic-html (paper) | 0.714 (full 7809) | Includes non-English |
 
@@ -76,7 +76,7 @@ Pattern: pages with prominent tables or structured data. html2text renders table
 
 ### 3. Missing Content / Low Recall (4.2% of pages, ~1pp F1 cost)
 
-Hummingbird finds the right area but only extracts a fraction of the content.
+Pulpie finds the right area but only extracts a fraction of the content.
 
 Examples:
 - squarespace forum: P=1.0, R=0.081 — only first post, missing all replies
@@ -87,7 +87,7 @@ Pattern: forums and multi-section pages where content spans many blocks but the 
 
 ### 4. Complete Failures / Both Low (4.2% of pages)
 
-Pages where hummingbird extracts completely wrong content.
+Pages where pulpie extracts completely wrong content.
 
 Examples:
 - moodys.com: dynamic JS-rendered content, no server-side HTML
@@ -96,7 +96,7 @@ Examples:
 
 ### 5. Empty Extractions (2.2% of pages)
 
-Hummingbird produces no output at all.
+Pulpie produces no output at all.
 
 Examples:
 - scienceforums.net: forum content in non-block-level elements

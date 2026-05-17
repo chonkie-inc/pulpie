@@ -1,6 +1,6 @@
 """Compare all methods on same 200 WMB English pages.
 
-Runs: Dripper 0.6B, Latte Base (0.6B), Latte Large (2.1B)
+Runs: Dripper 0.6B, Orange Base (0.6B), Orange Large (2.1B)
 DeepSeek results already obtained separately.
 """
 
@@ -110,12 +110,12 @@ from block_chunker import extract_blocks, tokenize_blocks, pack_chunks, SEP_TOKE
 WMB_PATH = os.path.join(DATA_DIR, 'webmainbench.jsonl')
 VLLM_URL = "http://localhost:8235/v1/chat/completions"
 DRIPPER_MODEL = "opendatalab/MinerU-HTML-v1.1-hunyuan0.5B-compact"
-LATTE_BASE_PATH = os.path.join(DATA_DIR, 'block_classifier_0.6B', 'final')
-LATTE_LARGE_PATH = os.path.join(DATA_DIR, 'block_classifier_eurobert_2.1B', 'checkpoint-5250')
+ORANGE_BASE_PATH = os.path.join(DATA_DIR, 'block_classifier_0.6B', 'final')
+ORANGE_LARGE_PATH = os.path.join(DATA_DIR, 'block_classifier_eurobert_2.1B', 'checkpoint-5250')
 BLOCK_TOKEN = "[BLOCK]"
 MAX_TOKENS_DRIPPER = 4096
-LATTE_BASE_MAX_LENGTH = 32768
-LATTE_LARGE_MAX_TOKENS = 8192
+ORANGE_BASE_MAX_LENGTH = 32768
+ORANGE_LARGE_MAX_TOKENS = 8192
 
 
 def html_to_text(html_str):
@@ -192,7 +192,7 @@ def extract_with_dripper(simplified, map_html):
         return None
 
 
-# ── Latte Base (0.6B, [BLOCK] marker) ──
+# ── Orange Base (0.6B, [BLOCK] marker) ──
 
 def insert_block_markers(simplified_html):
     pattern = re.compile(r'(_item_id="(\d+)")')
@@ -213,12 +213,12 @@ def insert_block_markers(simplified_html):
 
 
 @torch.no_grad()
-def classify_latte_base(model, tokenizer, block_token_id, simplified, device):
+def classify_orange_base(model, tokenizer, block_token_id, simplified, device):
     marked_html, item_ids = insert_block_markers(simplified)
     if marked_html is None:
         return {}
     encoding = tokenizer(
-        marked_html, truncation=True, max_length=LATTE_BASE_MAX_LENGTH,
+        marked_html, truncation=True, max_length=ORANGE_BASE_MAX_LENGTH,
         add_special_tokens=True, padding=False, return_tensors='pt',
     )
     input_ids = encoding['input_ids'].to(device)
@@ -232,10 +232,10 @@ def classify_latte_base(model, tokenizer, block_token_id, simplified, device):
     return labels
 
 
-# ── Latte Large (2.1B, <|sep|> chunking) ──
+# ── Orange Large (2.1B, <|sep|> chunking) ──
 
 @torch.no_grad()
-def classify_latte_large(model, tokenizer, sep_token_id, simplified, device):
+def classify_orange_large(model, tokenizer, sep_token_id, simplified, device):
     blocks = extract_blocks(simplified)
     if not blocks:
         return {}
@@ -248,7 +248,7 @@ def classify_latte_large(model, tokenizer, sep_token_id, simplified, device):
 
     block_token_ids = tokenize_blocks(blocks, tokenizer)
     chunks = pack_chunks(
-        block_token_ids, max_tokens=LATTE_LARGE_MAX_TOKENS,
+        block_token_ids, max_tokens=ORANGE_LARGE_MAX_TOKENS,
         sep_token_id=sep_token_id,
         bos_token_id=tokenizer.bos_token_id,
         eos_token_id=tokenizer.eos_token_id,
@@ -302,11 +302,11 @@ def main():
         pages = pages[:args.limit]
     print(f'  {len(pages)} pages', flush=True)
 
-    # Load Latte Base
-    print(f'\nLoading Latte Base (0.6B) on {device}...', flush=True)
-    base_tokenizer = AutoTokenizer.from_pretrained(LATTE_BASE_PATH, trust_remote_code=True)
+    # Load Orange Base
+    print(f'\nLoading Orange Base (0.6B) on {device}...', flush=True)
+    base_tokenizer = AutoTokenizer.from_pretrained(ORANGE_BASE_PATH, trust_remote_code=True)
     base_model = AutoModelForTokenClassification.from_pretrained(
-        LATTE_BASE_PATH, trust_remote_code=True,
+        ORANGE_BASE_PATH, trust_remote_code=True,
         torch_dtype=torch.bfloat16, attn_implementation='sdpa',
     ).to(device).eval()
     for m in base_model.modules():
@@ -315,11 +315,11 @@ def main():
     block_token_id = base_tokenizer.convert_tokens_to_ids(BLOCK_TOKEN)
     print(f'  [BLOCK] id = {block_token_id}', flush=True)
 
-    # Load Latte Large
-    print(f'Loading Latte Large (2.1B) on {device}...', flush=True)
-    large_tokenizer = AutoTokenizer.from_pretrained(LATTE_LARGE_PATH, trust_remote_code=True)
+    # Load Orange Large
+    print(f'Loading Orange Large (2.1B) on {device}...', flush=True)
+    large_tokenizer = AutoTokenizer.from_pretrained(ORANGE_LARGE_PATH, trust_remote_code=True)
     large_model = AutoModelForTokenClassification.from_pretrained(
-        LATTE_LARGE_PATH, trust_remote_code=True,
+        ORANGE_LARGE_PATH, trust_remote_code=True,
         torch_dtype=torch.bfloat16, attn_implementation='sdpa',
     ).to(device).eval()
     sep_token_id = large_tokenizer.convert_tokens_to_ids(SEP_TOKEN)
@@ -364,8 +364,8 @@ def main():
         dripper_scores.append(r5)
         dripper_by_level.setdefault(level, []).append(r5)
 
-        # Latte Base
-        base_labels = classify_latte_base(base_model, base_tokenizer, block_token_id, simplified, device)
+        # Orange Base
+        base_labels = classify_orange_base(base_model, base_tokenizer, block_token_id, simplified, device)
         base_text = labels_to_text(base_labels, map_html)
         if not base_text:
             base_fail += 1
@@ -373,8 +373,8 @@ def main():
         base_scores.append(r5)
         base_by_level.setdefault(level, []).append(r5)
 
-        # Latte Large
-        large_labels = classify_latte_large(large_model, large_tokenizer, sep_token_id, simplified, device)
+        # Orange Large
+        large_labels = classify_orange_large(large_model, large_tokenizer, sep_token_id, simplified, device)
         large_text = labels_to_text(large_labels, map_html)
         if not large_text:
             large_fail += 1
@@ -399,8 +399,8 @@ def main():
 
     methods = [
         ('Dripper 0.6B (local vLLM)', dripper_scores, dripper_by_level, dripper_fail),
-        ('Hummingbird Latte Base (0.6B)', base_scores, base_by_level, base_fail),
-        ('Hummingbird Latte Large (2.1B)', large_scores, large_by_level, large_fail),
+        ('Pulpie Orange Base (0.6B)', base_scores, base_by_level, base_fail),
+        ('Pulpie Orange Large (2.1B)', large_scores, large_by_level, large_fail),
     ]
 
     print(f'\n  {"Method":<35} {"All":>8} {"Simple":>8} {"Mid":>8} {"Hard":>8} {"Empty":>6}')

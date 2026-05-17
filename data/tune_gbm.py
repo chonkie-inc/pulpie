@@ -1,4 +1,4 @@
-"""Hyperparameter tuning for hummingbird GBM classifier."""
+"""Hyperparameter tuning for pulpie GBM classifier."""
 
 import json
 import os

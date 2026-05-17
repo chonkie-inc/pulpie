@@ -1,4 +1,4 @@
-"""Score hummingbird outputs and API reference texts with qrater."""
+"""Score pulpie outputs and API reference texts with qrater."""
 
 import json
 import os

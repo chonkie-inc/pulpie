@@ -16,7 +16,7 @@
 - Agents call Exa, Parallel, Firecrawl, Jina, Browserbase to fetch pages
 - What comes back: nav bars, cookie banners, ads, "related articles", footer links, login prompts, schema.org JSON, tracking pixels
 - Show concrete before/after examples (2-3 real pages from Exa/Parallel)
-- qrater clean rate numbers on API outputs vs Hummingbird-cleaned outputs
+- qrater clean rate numbers on API outputs vs Pulpie-cleaned outputs
 
 ### Failure Mode 1: Context Pollution
 - Context window is finite and expensive
@@ -38,11 +38,11 @@
 
 ### The Pareto Efficiency Argument
 - Show the quality/compute tradeoff curve
-- CPU tier: Trafilatura (0.640) → magic-html (0.714) → Hummingbird Espresso (0.808)
-- GPU tier: Latte Base 0.6B (0.847) → Dripper 0.6B (0.854) → Latte Large 2.1B (0.862)
+- CPU tier: Trafilatura (0.640) → magic-html (0.714) → Pulpie Espresso (0.808)
+- GPU tier: Orange Base 0.6B (0.847) → Dripper 0.6B (0.854) → Orange Large 2.1B (0.862)
 - For inference pipelines, latency matters — you need cleaning in the hot path
-- Hummingbird Espresso: best CPU cleaner, 16.8pp above trafilatura
-- Hummingbird Latte: matches Dripper quality at lower deployment complexity
+- Pulpie Espresso: best CPU cleaner, 16.8pp above trafilatura
+- Pulpie Orange: matches Dripper quality at lower deployment complexity
 
 ### What Good Cleaning Looks Like
 - Before/after on 3 representative pages (simple blog, complex e-commerce, forum)
@@ -52,4 +52,4 @@
 ### Call to Action
 - If you're building agents that browse the web, you need cleaning in your pipeline
 - Not just for training anymore — every API call is a cleaning problem
-- Link to Hummingbird / Chonkie
+- Link to Pulpie / Chonkie

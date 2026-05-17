@@ -1,4 +1,4 @@
-# Hummingbird Work Log
+# Pulpie Work Log
 
 ## Goal
 Build a fast, CPU-only pipeline for extracting main content from raw HTML and outputting clean markdown. Target: close the gap to Dripper-0.6B (0.878 ROUGE-5 on WebMainBench).
@@ -18,7 +18,7 @@ Exports: `extract(html) -> markdown` and `extract_html(html) -> html` (for pipin
 
 ### WebMainBench (primary)
 - 7,809 annotated pages with `cc-select="true"` on main content elements
-- DOM-based label projection: walk DOM same way hummingbird does, check for `cc-select` descendants, match to Rust-extracted blocks by normalized text
+- DOM-based label projection: walk DOM same way pulpie does, check for `cc-select` descendants, match to Rust-extracted blocks by normalized text
 - **446,509 training blocks**: 264,512 KEEP (59.4%) / 181,997 DISCARD (40.6%)
 - Script: `data/generate_training_data_dom.py`
 
@@ -107,9 +107,9 @@ num_boost_round: 3,083 (early stopping @100)
 
 | Method | ROUGE-5 F1 | Notes |
 |--------|-----------|-------|
-| Hummingbird (WMB+CC) | **0.808** | Combined training data, 7696 rounds |
-| Hummingbird (WMB only) | 0.806 | Previous model, 3083 rounds |
-| Hummingbird (native md) | 0.745 | Custom markdown converter |
+| Pulpie (WMB+CC) | **0.808** | Combined training data, 7696 rounds |
+| Pulpie (WMB only) | 0.806 | Previous model, 3083 rounds |
+| Pulpie (native md) | 0.745 | Custom markdown converter |
 | Dripper 0.6B (paper) | 0.878 | 7,809 pages including non-English |
 | magic-html (paper) | 0.714 | 7,809 pages including non-English |
 
@@ -118,10 +118,10 @@ num_boost_round: 3,083 (early stopping @100)
 | Method | Clean% | Simple | Mid | Hard |
 |--------|--------|--------|-----|------|
 | Dripper 0.6B | **80.0%** | 83% | 78% | 80% |
-| Hummingbird (GBM) | 66.0% | 76% | 65% | 58% |
+| Pulpie (GBM) | 66.0% | 76% | 65% | 58% |
 | Raw html2text | 5.6% | 12% | 3% | 3% |
 
-**Key finding**: 14pp gap between hummingbird and Dripper on qrater clean rate. On hard pages, gap is 22pp (58% vs 80%). Dripper is remarkably consistent across difficulty levels while hummingbird degrades sharply.
+**Key finding**: 14pp gap between pulpie and Dripper on qrater clean rate. On hard pages, gap is 22pp (58% vs 80%). Dripper is remarkably consistent across difficulty levels while pulpie degrades sharply.
 
 This confirms the GBM structural approach is **saturated at ~0.81 ROUGE / ~66% qrater clean**. More training data (CC) gave negligible gains (+0.2pp ROUGE). The remaining gap is architectural — structural features cannot capture the page-level context that Dripper's full-page classification provides.
 
@@ -242,7 +242,7 @@ F1 distribution (500-page sample):
 - Script: `data/generate_cc_training_data.py` — CC feature extraction pipeline
   - Filters to pages with >=70% Dripper agreement (14,959 of 15,880 pages)
   - Simplifies HTML with MinerU-HTML to get block texts per _item_id
-  - Runs hummingbird `export_features` on raw HTML for Rust features
+  - Runs pulpie `export_features` on raw HTML for Rust features
   - Matches by normalized text → 346,959 matched blocks (57% match rate)
   - KEEP: 164,591 (47.4%) / DISCARD: 182,368 (52.6%)
 - Script: `data/train_combined.py` — trains on WMB + CC
@@ -253,15 +253,15 @@ F1 distribution (500-page sample):
 - **ROUGE-5 result: 0.808** — only +0.2pp over WMB-only (0.806)
 - **Conclusion**: More data from the same feature space doesn't fix structural limitations. GBM is saturated.
 
-### 11. Qrater clean rate comparison (hummingbird vs Dripper)
+### 11. Qrater clean rate comparison (pulpie vs Dripper)
 - Script: `eval/eval_qrater_dripper.py`
 - Ran full Dripper pipeline (simplify → Dripper 0.6B via vLLM → reconstruct → html2text) on 500 WMB pages
 - Scored all outputs with qrater EuroBERT-210m clean/dirty classifier
 - **Results**:
   - Raw html2text: 5.6% clean
-  - Hummingbird GBM: 66.0% clean (+60pp over raw)
-  - Dripper 0.6B: 80.0% clean (+14pp over hummingbird)
-  - Hard pages: hummingbird 58% vs Dripper 80% (22pp gap)
+  - Pulpie GBM: 66.0% clean (+60pp over raw)
+  - Dripper 0.6B: 80.0% clean (+14pp over pulpie)
+  - Hard pages: pulpie 58% vs Dripper 80% (22pp gap)
 - **Conclusion**: GBM approach is saturated at ~66% qrater clean rate. The 14pp gap to Dripper is architectural — need a model that sees full page context to close it.
 
 ### 12. Empty page analysis
@@ -319,7 +319,7 @@ GBM is massively overfitting to WebMainBench's page distribution. Need diverse C
 | DeepSeek-V3.2 (LLM) | 0.9098 | 0.9415 | 0.9104 | 0.8771 |
 | GPT-4 (LLM) | 0.9024 | 0.9382 | 0.9042 | 0.8638 |
 | Dripper 0.6B | 0.8779 | 0.9205 | 0.8804 | 0.8313 |
-| Hummingbird GBM (h2t) | 0.808 | 0.885 | 0.805 | 0.740 |
+| Pulpie GBM (h2t) | 0.808 | 0.885 | 0.805 | 0.740 |
 | magic-html | 0.714 | 0.786 | 0.712 | 0.643 |
 | **[BLOCK] classifier** | **0.687** | **0.772** | **0.698** | **0.594** |
 | Readability | 0.654 | 0.742 | 0.655 | 0.565 |
@@ -363,31 +363,31 @@ GBM is massively overfitting to WebMainBench's page distribution. Need diverse C
 | Apr 15 | Dripper double-check complete: 93.3% agreement, 15,848 pages OK |
 | Apr 16 | CC feature extraction → 347K blocks from 14,959 high-agreement pages |
 | Apr 16 | Combined GBM training: 793K blocks, 7696 rounds → 0.808 ROUGE-5 (+0.2pp, saturated) |
-| Apr 16 | Qrater comparison: hummingbird 66% vs Dripper 80% clean rate — 14pp architectural gap confirmed |
+| Apr 16 | Qrater comparison: pulpie 66% vs Dripper 80% clean rate — 14pp architectural gap confirmed |
 | Apr 16 | [BLOCK] classifier trained: Qwen3-0.6B, PL-Marker, 4×A100, 38 min, block F1=0.840 |
 | Apr 16 | [BLOCK] classifier eval: 0.687 ROUGE-5 on WMB — 12pp below GBM (0.808), needs investigation |
 | Apr 17 | EuroBERT-2.1B block classifier trained: <|sep|> chunking, 8K context, plateaued at 0.864 ROUGE-5 |
-| Apr 17 | Uploaded hummingbird-latte-large-v1 to HuggingFace (chonkie-ai, private) |
+| Apr 17 | Uploaded pulpie-orange-large-v1 to HuggingFace (chonkie-ai, private) |
 | Apr 18 | DeepSeek V3.2 label quality verification: v0=0.840, short_compact=0.865, compact=0.862, v1=0.847, v2=0.835 |
 | Apr 19 | Dripper native vLLM eval: 0.854 (valid only) on 200 English pages — below paper's 0.878 claim |
 | Apr 20 | Error analysis: paper's 0.9001 uses jieba tokenization (+1-2pp), all languages, and eval conditions we can't reproduce |
-| Apr 22 | EuroBERT 2.1B→610M distillation complete: 0.849 ROUGE-5, uploaded as latte-base-v1 |
-| Apr 22 | EuroBERT 2.1B→210M distillation complete: 0.864 ROUGE-5 (matches teacher!), uploaded as latte-small-v1 |
+| Apr 22 | EuroBERT 2.1B→610M distillation complete: 0.849 ROUGE-5, uploaded as orange-base-v1 |
+| Apr 22 | EuroBERT 2.1B→210M distillation complete: 0.864 ROUGE-5 (matches teacher!), uploaded as orange-small-v1 |
 | Apr 23 | 64-token truncation eval: -2.1pp quality, only 1.25x GPU speedup (HTML structure dominates tokens) |
 | Apr 23 | Real-page throughput benchmark: 15.9 pps sequential, 43 pps GPU-only, CPU simplify_html is bottleneck |
 | Apr 23 | Pipelined multi-GPU architecture designed: 4×A100 → ~170 pps, 1B in ~55-68 days |
-| Apr 29 | Dripper vs Hummingbird head-to-head: 5.4 vs 43 pps (8x), $77K vs $9.7K for 1B pages on A100 |
-| Apr 29 | Cost analysis: Hummingbird on L4 ~$6.1K vs Dripper on A100 ~$77K → ~13x cheaper (est.) |
-| Apr 29 | L4 empirical benchmarks: Hummingbird 15.1 pps, Dripper 0.92 pps — 16.4x gap confirmed |
+| Apr 29 | Dripper vs Pulpie head-to-head: 5.4 vs 43 pps (8x), $77K vs $9.7K for 1B pages on A100 |
+| Apr 29 | Cost analysis: Pulpie on L4 ~$6.1K vs Dripper on A100 ~$77K → ~13x cheaper (est.) |
+| Apr 29 | L4 empirical benchmarks: Pulpie 15.1 pps, Dripper 0.92 pps — 16.4x gap confirmed |
 | Apr 29 | 1B pages on 28× L4: ~27 days, ~$6.5K (RunPod). Dripper on L4 unusable: $105K for same job |
 
-### 14. Hummingbird Latte Large (EuroBERT-2.1B, <|sep|> chunking)
+### 14. Pulpie Orange Large (EuroBERT-2.1B, <|sep|> chunking)
 - **Architecture**: EuroBERT-2.1B with `<|sep|>` token separating blocks, packed into 8K chunks
 - **Training**: 14,959 CC pages, lr=2e-5, BS=4, grad_accum=2, class-weighted CE, gradient checkpointing
 - **Result**: ROUGE-5 = 0.864 on 200 English WMB pages (plateaued by epoch 0.75)
 - **Key insight**: Trained on DeepSeek v0 labels (0.840 quality) but EXCEEDS its teacher by +2.4pp
 - Scripts: `data/train_eurobert_classifier.py`, model: `data/block_classifier_eurobert_2.1B/checkpoint-5250`
-- Uploaded: `chonkie-ai/hummingbird-latte-large-v1` (private)
+- Uploaded: `chonkie-ai/pulpie-orange-large-v1` (private)
 
 ### 15. Dripper / MinerU-HTML reproduction & label ceiling investigation
 - **Goal**: Reproduce Dripper's paper score (0.878) and understand the label quality ceiling
@@ -410,9 +410,9 @@ GBM is massively overfitting to WebMainBench's page distribution. Need diverse C
 | Method | All | Simple | Mid | Hard |
 |--------|-----|--------|-----|------|
 | DeepSeek V3.2 (short_compact) | 0.865 | 0.932 | 0.875 | 0.786 |
-| Hummingbird Latte Large (2.1B) | 0.862 | 0.928 | 0.856 | 0.807 |
+| Pulpie Orange Large (2.1B) | 0.862 | 0.928 | 0.856 | 0.807 |
 | Dripper native (valid only) | 0.854 | 0.922 | 0.868 | 0.768 |
-| Hummingbird Latte Base (0.6B) | 0.847 | 0.907 | 0.848 | 0.787 |
+| Pulpie Orange Base (0.6B) | 0.847 | 0.907 | 0.848 | 0.787 |
 | DeepSeek V3.2 (v0, current labels) | 0.840 | 0.930 | 0.823 | 0.774 |
 
 **Key findings on paper's 0.9001 claim:**
@@ -528,7 +528,7 @@ Pages fitting in context window (with pre-filter):
 - **Result**: ROUGE-5 = 0.849 (All), 0.889 (Simple), 0.842 (Mid), 0.833 (Hard)
 - F1=0.925, Precision=0.917, Recall=0.933
 - Model saved: `data/block_classifier_eurobert_610m_distill/final/`
-- Uploaded: `chonkie-ai/hummingbird-latte-base-v1` (replaced Qwen3 model)
+- Uploaded: `chonkie-ai/pulpie-orange-base-v1` (replaced Qwen3 model)
 
 ### 23. EuroBERT 2.1B → 210M distillation (complete)
 - Script: `data/train_distill_eurobert_210m.py`
@@ -539,7 +539,7 @@ Pages fitting in context window (with pre-filter):
 - **Matches the 2.1B teacher** (0.864 vs 0.864) at 1/10th the size
 - Actually beats 610M distilled (0.849) — smaller model learned better
 - Model saved: `data/block_classifier_eurobert_210m_distill/final/`
-- Uploaded: `chonkie-ai/hummingbird-latte-small-v1` (private)
+- Uploaded: `chonkie-ai/pulpie-orange-small-v1` (private)
 
 ### 24. 64-token truncation quality evaluation
 - Tested 2.1B teacher and 210M distilled on WMB with full (500-char) vs 64-token block truncation
@@ -611,30 +611,30 @@ CPU pool (8 workers, ~280 pps) → Queue per GPU → 4 GPUs (~43 pps each)
 - 4×A100 + CPU pipeline: ~55-68 days (need ~6-8 GPUs)
 - 8×L4 equivalent: similar compute, cheaper per GPU-hour
 
-### 28. Dripper vs Hummingbird head-to-head throughput (same GPU, same data)
+### 28. Dripper vs Pulpie head-to-head throughput (same GPU, same data)
 
 **Setup**: 500 real CC pages, single A100 80GB, SDPA attention
 
 | Model | Architecture | Throughput (GPU) | GPU-hours/1B pages | Notes |
 |-------|-------------|-----------------|-------------------|-------|
 | Dripper 0.6B | Autoregressive (vLLM) | 5.38 pps | 51,632 | Memory-bandwidth bound |
-| **Hummingbird 210M** | **Encoder (SDPA)** | **43 pps** | **6,460** | **Compute-bound** |
+| **Pulpie 210M** | **Encoder (SDPA)** | **43 pps** | **6,460** | **Compute-bound** |
 | **Speedup** | | **8x** | **8x** | |
 
-**Why the 8x gap**: Dripper generates tokens autoregressively (sequential decoding, KV-cache bound by HBM bandwidth). Hummingbird classifies in a single forward pass with batched encoder inference. Encoders are compute-bound → scale with FLOPS, not memory bandwidth.
+**Why the 8x gap**: Dripper generates tokens autoregressively (sequential decoding, KV-cache bound by HBM bandwidth). Pulpie classifies in a single forward pass with batched encoder inference. Encoders are compute-bound → scale with FLOPS, not memory bandwidth.
 
 **Cost comparison for 1B pages:**
 
 | Setup | Throughput | GPU-hours | $/GPU-hr | Total cost |
 |-------|-----------|-----------|----------|------------|
 | Dripper on A100 | 5.4 pps | 51,632 | $1.50 | **~$77K** |
-| Hummingbird on A100 | 43 pps | 6,460 | $1.50 | **~$9.7K** |
-| Hummingbird on L4 (est.) | ~16 pps | ~17,360 | $0.35 | **~$6.1K** |
+| Pulpie on A100 | 43 pps | 6,460 | $1.50 | **~$9.7K** |
+| Pulpie on L4 (est.) | ~16 pps | ~17,360 | $0.35 | **~$6.1K** |
 
 - A100 vs A100: **8x cheaper** (same hardware, raw throughput advantage)
-- Hummingbird on L4 vs Dripper on A100: **~13x cheaper** (cheaper hardware + still good throughput)
+- Pulpie on L4 vs Dripper on A100: **~13x cheaper** (cheaper hardware + still good throughput)
 - Dripper **cannot** run efficiently on L4s — autoregressive decoding needs high memory bandwidth (A100: 2 TB/s, L4: 300 GB/s). Throughput would collapse to <1 pps.
-- Hummingbird 210M is compute-bound and fits in 433MB VRAM — runs on any GPU class (L4, T4, RTX 3090)
+- Pulpie 210M is compute-bound and fits in 433MB VRAM — runs on any GPU class (L4, T4, RTX 3090)
 
 **L4 throughput estimate** (not yet benchmarked, extrapolated from FLOPS ratio):
 - A100: 312 TFLOPS FP16 → 43 pps
@@ -649,13 +649,13 @@ The 210M distilled model is the sweet spot — matches the 2.1B teacher at 0.864
 
 64-token truncation gives a modest 1.25x throughput gain for 2.1pp quality loss. The bigger lever is pipelining CPU and GPU work (currently sequential) and multi-GPU parallelism. The simplify_html CPU stage (28ms/page) is the true bottleneck at scale, not the GPU.
 
-Head-to-head against Dripper 0.6B on the same A100: **8x faster** (43 vs 5.4 pps). On L4 GPUs (empirically validated): **16.4x faster** (15.1 vs 0.92 pps) — the gap widens because autoregressive decoding collapses on L4's low memory bandwidth (300 GB/s vs A100's 2 TB/s). Cost for 1B pages: **$6.5K (Hummingbird on L4) vs $105K (Dripper on L4) vs $77K (Dripper on A100)**. Dripper's autoregressive architecture is locked to high-bandwidth GPUs.
+Head-to-head against Dripper 0.6B on the same A100: **8x faster** (43 vs 5.4 pps). On L4 GPUs (empirically validated): **16.4x faster** (15.1 vs 0.92 pps) — the gap widens because autoregressive decoding collapses on L4's low memory bandwidth (300 GB/s vs A100's 2 TB/s). Cost for 1B pages: **$6.5K (Pulpie on L4) vs $105K (Dripper on L4) vs $77K (Dripper on A100)**. Dripper's autoregressive architecture is locked to high-bandwidth GPUs.
 
 ### 29. L4 GPU benchmarks — real CC pages (empirical, 500 pages)
 
-**Setup**: 8× NVIDIA L4 (23GB each), 500 real Common Crawl pages (median 40KB HTML), EuroBERT-210M distilled (Latte Small), bf16 + SDPA, no torch.compile.
+**Setup**: 8× NVIDIA L4 (23GB each), 500 real Common Crawl pages (median 40KB HTML), EuroBERT-210M distilled (Orange Small), bf16 + SDPA, no torch.compile.
 
-**Hummingbird Latte Small (210M) — end-to-end pipeline:**
+**Pulpie Orange Small (210M) — end-to-end pipeline:**
 
 | Stage | Time (500pg) | % | Rate |
 |-------|-------------|---|------|
@@ -672,7 +672,7 @@ Head-to-head against Dripper 0.6B on the same A100: **8x faster** (43 vs 5.4 pps
 - SDPA 4D mask fix: model creates [B,1,S,S] expanded mask that prevents efficient SDPA kernel. Patched to pass None (no padding) or [B,1,1,S] (with padding). Saves ~3GB VRAM but no throughput change — efficient kernel was already dispatched.
 - torch.compile with CUDA graphs: same 14.2 pps as eager (dynamic shapes cause excessive graph captures). Fixed-bucket approach with multiple compiled models was worse (7.8-9.2 pps) due to padding waste.
 
-**Hummingbird vs A100 comparison:**
+**Pulpie vs A100 comparison:**
 
 | Metric | A100 (work log) | L4 (measured) | L4/A100 |
 |--------|----------------|---------------|---------|
@@ -698,21 +698,21 @@ Dripper on L4 is 17% of its A100 speed (0.92 vs 5.38 pps), matching the memory b
 
 | Setup | pps | GPU-hours | RunPod ($0.35/hr) | GCP ($0.80/hr) |
 |-------|-----|-----------|-------------------|----------------|
-| **Hummingbird 210M on L4** | **15.1** | **18,400** | **$6,500** | **$14,700** |
-| Hummingbird 210M on A100 | 43 | 6,460 | — | $9,700 |
+| **Pulpie 210M on L4** | **15.1** | **18,400** | **$6,500** | **$14,700** |
+| Pulpie 210M on A100 | 43 | 6,460 | — | $9,700 |
 | Dripper 0.6B on A100 | 5.38 | 51,600 | — | $77,000 |
 | Dripper 0.6B on L4 | 0.92 | 301,000 | $105,000 | $241,000 |
 
-- Hummingbird on L4 vs Dripper on L4: **16.4x faster, 16.4x cheaper**
-- Hummingbird on L4 vs Dripper on A100: **12x cheaper** ($6.5K vs $77K)
+- Pulpie on L4 vs Dripper on L4: **16.4x faster, 16.4x cheaper**
+- Pulpie on L4 vs Dripper on A100: **12x cheaper** ($6.5K vs $77K)
 - Dripper on L4 is worse than Dripper on A100 — cheaper GPU-hours but 6x more of them
 
 **1B pages in 30 days (pipelined, 8 CPU workers):**
 
 | GPUs | Effective pps | Days | RunPod cost |
 |------|--------------|------|-------------|
-| 8× L4 (Hummingbird) | 121 | 96 | $6,500 |
-| 28× L4 (Hummingbird) | 423 | **27 days** | **$6,500** |
+| 8× L4 (Pulpie) | 121 | 96 | $6,500 |
+| 28× L4 (Pulpie) | 423 | **27 days** | **$6,500** |
 | 420× L4 (Dripper) | 386 | 30 days | $105,000 |
 
 ## TODO: Pulpie simplify.py Rewrite
@@ -745,7 +745,7 @@ The current workaround (using MinerU's simplify externally) works for eval but n
 
 | Name | HuggingFace | Size | ROUGE-5 | Notes |
 |------|-------------|------|---------|-------|
-| Latte Large | chonkie-ai/hummingbird-latte-large-v1 | 2.1B | 0.864 | Teacher, trained on CC |
-| **Latte Base** | **chonkie-ai/hummingbird-latte-base-v1** | **610M** | **0.849** | Distilled from 2.1B |
-| **Latte Small** | **chonkie-ai/hummingbird-latte-small-v1** | **210M** | **0.864** | Distilled from 2.1B, best value |
-| Espresso | chonkie-ai/hummingbird-espresso-v1 | GBM | 0.68* | *Out-of-sample; 0.81 on test set |
+| Orange Large | chonkie-ai/pulpie-orange-large-v1 | 2.1B | 0.864 | Teacher, trained on CC |
+| **Orange Base** | **chonkie-ai/pulpie-orange-base-v1** | **610M** | **0.849** | Distilled from 2.1B |
+| **Orange Small** | **chonkie-ai/pulpie-orange-small-v1** | **210M** | **0.864** | Distilled from 2.1B, best value |
+| Espresso | chonkie-ai/pulpie-espresso-v1 | GBM | 0.68* | *Out-of-sample; 0.81 on test set |

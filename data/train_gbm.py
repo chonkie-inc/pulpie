@@ -1,4 +1,4 @@
-"""Feature engineering + LightGBM training for hummingbird block classifier.
+"""Feature engineering + LightGBM training for pulpie block classifier.
 
 Reads training_data.csv, does feature selection, trains LightGBM,
 saves model + selected feature list.

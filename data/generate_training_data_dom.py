@@ -1,8 +1,8 @@
 """Generate training data using DOM-based label projection.
 
-Instead of word overlap, we walk the annotated DOM the same way hummingbird
+Instead of word overlap, we walk the annotated DOM the same way pulpie
 does, and check if each block element contains cc-select="true" descendants.
-Then we match those labels to hummingbird's Rust-extracted features by text.
+Then we match those labels to pulpie's Rust-extracted features by text.
 """
 
 import csv
@@ -14,14 +14,14 @@ import sys
 
 from bs4 import BeautifulSoup, Tag
 
-HUMMINGBIRD_BIN = os.path.join(
+PULPIE_BIN = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "..", "target", "release", "export_features"
 )
 DATA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "webmainbench.jsonl")
 OUTPUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "training_data_dom.csv")
 
-# Must match hummingbird's segment.rs
+# Must match pulpie's segment.rs
 BLOCK_TAGS = {
     "p", "h1", "h2", "h3", "h4", "h5", "h6",
     "li", "pre", "blockquote", "td", "th", "figcaption", "dt", "dd",
@@ -69,7 +69,7 @@ def has_cc_select(element):
 
 
 def get_text(element):
-    """Get text content of element (matching hummingbird's element.text().collect())."""
+    """Get text content of element (matching pulpie's element.text().collect())."""
     return element.get_text()
 
 
@@ -82,7 +82,7 @@ def has_block_descendants(element):
 
 
 def walk_dom(element, blocks):
-    """Walk DOM same as hummingbird's segment.rs walk()."""
+    """Walk DOM same as pulpie's segment.rs walk()."""
     if not isinstance(element, Tag):
         return
 
@@ -142,9 +142,9 @@ def strip_annotations(html):
 
 
 def run_export_features(html):
-    """Run hummingbird export_features binary on HTML."""
+    """Run pulpie export_features binary on HTML."""
     result = subprocess.run(
-        [HUMMINGBIRD_BIN],
+        [PULPIE_BIN],
         input=html, capture_output=True, text=True, timeout=30,
     )
     if result.returncode != 0:
@@ -196,8 +196,8 @@ def feature_row(block, label):
 
 
 def main():
-    if not os.path.exists(HUMMINGBIRD_BIN):
-        print("ERROR: Build hummingbird first: cargo build --release")
+    if not os.path.exists(PULPIE_BIN):
+        print("ERROR: Build pulpie first: cargo build --release")
         sys.exit(1)
 
     print(f"Reading {DATA_PATH}...", flush=True)

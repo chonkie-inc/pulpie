@@ -1,8 +1,8 @@
-"""Evaluate hummingbird output quality using qrater clean/dirty classifier.
+"""Evaluate pulpie output quality using qrater clean/dirty classifier.
 
-Runs hummingbird on HTML pages (WebMainBench or CC), then scores
+Runs pulpie on HTML pages (WebMainBench or CC), then scores
 the extracted markdown with the qrater EuroBERT-210m model.
-Reports clean rate before (raw html2text) and after hummingbird extraction.
+Reports clean rate before (raw html2text) and after pulpie extraction.
 """
 
 import json
@@ -18,7 +18,7 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
 EVAL_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(EVAL_DIR, '..', 'data')
-HBIRD_BIN = os.path.join(EVAL_DIR, '..', 'target', 'release', 'hummingbird')
+HBIRD_BIN = os.path.join(EVAL_DIR, '..', 'target', 'release', 'pulpie')
 QRATER_MODEL = os.path.join(EVAL_DIR, '..', '..', 'gym', 'qrater',
                              'models', 'encoder-distill',
                              'eurobert-210m_0.6b-labels', 'final')
@@ -37,7 +37,7 @@ def html_to_text(html_str):
     return h.handle(html_str)
 
 
-def extract_with_hummingbird(html_content):
+def extract_with_pulpie(html_content):
     with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
         f.write(html_content)
         tmp_path = f.name
@@ -113,8 +113,8 @@ def main():
         pages = pages[:args.limit]
         print(f'  Limited to {len(pages)}', flush=True)
 
-    # Process: raw html2text vs hummingbird extraction
-    print(f'\nExtracting with hummingbird...', flush=True)
+    # Process: raw html2text vs pulpie extraction
+    print(f'\nExtracting with pulpie...', flush=True)
     raw_texts = []
     hbird_texts = []
     t0 = time.time()
@@ -126,8 +126,8 @@ def main():
         raw_md = html_to_text(html)[:MAX_TEXT_CHARS]
         raw_texts.append(raw_md if raw_md.strip() else '')
 
-        # Hummingbird: extract then score
-        hbird_md = extract_with_hummingbird(html)[:MAX_TEXT_CHARS]
+        # Pulpie: extract then score
+        hbird_md = extract_with_pulpie(html)[:MAX_TEXT_CHARS]
         hbird_texts.append(hbird_md if hbird_md.strip() else '')
 
         if (i + 1) % 100 == 0:
@@ -135,7 +135,7 @@ def main():
             print(f'  {i+1}/{len(pages)} ({elapsed:.0f}s)', flush=True)
 
     print(f'  Done extracting in {time.time() - t0:.0f}s', flush=True)
-    print(f'  Hummingbird empty: {sum(1 for t in hbird_texts if not t)}', flush=True)
+    print(f'  Pulpie empty: {sum(1 for t in hbird_texts if not t)}', flush=True)
     print(f'  Raw empty: {sum(1 for t in raw_texts if not t)}', flush=True)
 
     # Score with qrater
@@ -167,7 +167,7 @@ def main():
     print(f'  {"Method":<30} {"Clean":>6} {"Dirty":>6} {"Clean%":>8}')
     print(f'  {"-"*52}')
     print(f'  {"Raw html2text":<30} {raw_clean:>6} {n - raw_clean:>6} {raw_clean/n*100:>7.1f}%')
-    print(f'  {"Hummingbird (combined)":<30} {hbird_clean:>6} {n - hbird_clean:>6} {hbird_clean/n*100:>7.1f}%')
+    print(f'  {"Pulpie (combined)":<30} {hbird_clean:>6} {n - hbird_clean:>6} {hbird_clean/n*100:>7.1f}%')
     print(f'  {"Improvement":<30} {"":>6} {"":>6} {(hbird_clean - raw_clean)/n*100:>+7.1f}pp')
 
     # Transition matrix
@@ -177,7 +177,7 @@ def main():
     both_dirty = sum(1 for r, h in zip(raw_results, hbird_results) if r['label'] == 'dirty' and h['label'] == 'dirty')
 
     print(f'\n  Transition matrix:')
-    print(f'  {"":>25} {"Hbird Clean":>12} {"Hbird Dirty":>12}')
+    print(f'  {"":>25} {"Pulpie Clean":>12} {"Pulpie Dirty":>12}')
     print(f'  {"Raw Clean":<25} {both_clean:>12} {raw_clean_hbird_dirty:>12}')
     print(f'  {"Raw Dirty":<25} {raw_dirty_hbird_clean:>12} {both_dirty:>12}')
 
@@ -191,7 +191,7 @@ def main():
             lev_raw = sum(1 for i in idx if raw_results[i]['label'] == 'clean')
             lev_hbird = sum(1 for i in idx if hbird_results[i]['label'] == 'clean')
             print(f'    {level:>7}: raw={lev_raw}/{len(idx)} ({lev_raw/len(idx)*100:.1f}%)  '
-                  f'hbird={lev_hbird}/{len(idx)} ({lev_hbird/len(idx)*100:.1f}%)  '
+                  f'pulpie={lev_hbird}/{len(idx)} ({lev_hbird/len(idx)*100:.1f}%)  '
                   f'delta={((lev_hbird-lev_raw)/len(idx)*100):+.1f}pp')
 
 

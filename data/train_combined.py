@@ -2,7 +2,7 @@
 
 Combines training_data_dom.csv (WebMainBench) with training_data_cc.csv (CC),
 trains LightGBM with the same hyperparameters, and evaluates on WebMainBench
-using ROUGE-5 F1 via the hummingbird binary.
+using ROUGE-5 F1 via the pulpie binary.
 """
 
 import json

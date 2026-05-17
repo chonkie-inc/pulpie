@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate all blog figures for Introducing Hummingbird."""
+"""Generate all blog figures for Introducing Pulpie."""
 
 import matplotlib
 matplotlib.use("Agg")
@@ -45,7 +45,7 @@ def fig1_quality_vs_cost():
         ("Trafilatura",          10,     0.640, GRAY,       "s", 90),
         ("Readability",          10,     0.654, GRAY,       "s", 90),
         ("magic-html",           10,     0.714, GRAY,       "s", 90),
-        ("Hummingbird 210M",     6_500,  0.864, BLUE,       "o", 160),
+        ("Pulpie 210M",     6_500,  0.864, BLUE,       "o", 160),
         ("Dripper 0.6B",         77_000, 0.854, RED,        "D", 130),
     ]
 
@@ -58,20 +58,20 @@ def fig1_quality_vs_cost():
         "Trafilatura":      (3,    0.615, "right"),
         "Readability":      (3,    0.670, "right"),
         "magic-html":       (3,    0.730, "right"),
-        "Hummingbird 210M": (1_800, 0.885, "center"),
+        "Pulpie 210M": (1_800, 0.885, "center"),
         "Dripper 0.6B":     (200_000, 0.870, "center"),
     }
     for name, cost, rouge, color, marker, size in points:
         lx, ly, ha = label_cfg[name]
         ax.annotate(
             name, (cost, rouge), xytext=(lx, ly),
-            fontsize=10.5, fontweight="bold" if "Hummingbird" in name else "normal",
+            fontsize=10.5, fontweight="bold" if "Pulpie" in name else "normal",
             color=color,
             ha=ha, va="center",
             arrowprops=dict(arrowstyle="-", color=GRAY_LIGHT, lw=0.8),
         )
 
-    # Cost labels under Hummingbird and Dripper
+    # Cost labels under Pulpie and Dripper
     ax.text(6_500, 0.845, "$6.5K", fontsize=9, color=BLUE, ha="center", style="italic")
     ax.text(77_000, 0.840, "$77K", fontsize=9, color=RED, ha="center", style="italic")
 
@@ -89,7 +89,7 @@ def fig1_quality_vs_cost():
 
     legend_elements = [
         Line2D([0], [0], marker="s", color="w", markerfacecolor=GRAY, markersize=8, label="Heuristic (CPU)"),
-        Line2D([0], [0], marker="o", color="w", markerfacecolor=BLUE, markersize=8, label="Hummingbird (encoder)"),
+        Line2D([0], [0], marker="o", color="w", markerfacecolor=BLUE, markersize=8, label="Pulpie (encoder)"),
         Line2D([0], [0], marker="D", color="w", markerfacecolor=RED, markersize=8, label="Dripper (decoder)"),
     ]
     ax.legend(handles=legend_elements, loc="center right", fontsize=10,
@@ -107,7 +107,7 @@ def fig2_cost_comparison():
     fig.set_facecolor("white")
     ax.set_facecolor(BG)
 
-    labels = ["Hummingbird\n210M on L4", "Hummingbird\n210M on A100",
+    labels = ["Pulpie\n210M on L4", "Pulpie\n210M on A100",
               "Dripper\n0.6B on A100", "Dripper\n0.6B on L4"]
     costs = [6_500, 9_700, 77_000, 105_000]
     colors = [BLUE, BLUE_LIGHT, RED_LIGHT, RED]
@@ -118,7 +118,7 @@ def fig2_cost_comparison():
         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 2000,
                 f"${cost:,}", ha="center", va="bottom", fontsize=11, fontweight="bold")
 
-    # Comparison annotation: best Hummingbird vs best Dripper (realistic configs)
+    # Comparison annotation: best Pulpie vs best Dripper (realistic configs)
     ax.annotate("",
                 xy=(0, 6_500), xycoords="data",
                 xytext=(2, 77_000), textcoords="data",
@@ -152,7 +152,7 @@ def fig3_throughput():
     x = np.arange(len(gpus))
     width = 0.3
 
-    bars1 = ax.bar(x - width/2, hb_speeds, width, color=BLUE, label="Hummingbird 210M",
+    bars1 = ax.bar(x - width/2, hb_speeds, width, color=BLUE, label="Pulpie 210M",
                    edgecolor="white", linewidth=1.5)
     bars2 = ax.bar(x + width/2, dr_speeds, width, color=RED, label="Dripper 0.6B",
                    edgecolor="white", linewidth=1.5)
@@ -191,7 +191,7 @@ def fig4_distillation():
     fig.set_facecolor("white")
     ax.set_facecolor(BG)
 
-    models = ["Latte Large\n(2.1B)", "Latte Base\n(610M)", "Latte Small\n(210M)"]
+    models = ["Orange Large\n(2.1B)", "Orange Base\n(610M)", "Orange Small\n(210M)"]
     scores = [0.864, 0.849, 0.864]
     colors_bars = [BLUE, BLUE_LIGHT, BLUE]
 

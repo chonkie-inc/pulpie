@@ -3,7 +3,7 @@
 //! Reads HTML from stdin, segments into blocks, extracts features,
 //! and outputs JSON array with block text + features.
 
-use hummingbird::{clean, segment};
+use pulpie::{clean, segment};
 use scraper::Html;
 use serde::Serialize;
 use std::io::Read;

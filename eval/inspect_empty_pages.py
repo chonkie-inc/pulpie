@@ -1,4 +1,4 @@
-"""Investigate why 7 eval pages produce empty output from hummingbird."""
+"""Investigate why 7 eval pages produce empty output from pulpie."""
 
 import json
 import os
@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup, Tag
 
 DATA_DIR = os.path.dirname(os.path.abspath(__file__))
 BENCH_PATH = os.path.join(os.path.dirname(DATA_DIR), "data", "webmainbench.jsonl")
-HBIRD_BIN = os.path.join(os.path.dirname(DATA_DIR), "target", "release", "hummingbird")
+HBIRD_BIN = os.path.join(os.path.dirname(DATA_DIR), "target", "release", "pulpie")
 EXPORT_BIN = os.path.join(os.path.dirname(DATA_DIR), "target", "release", "export_features")
 
 SEED = 42
@@ -20,7 +20,7 @@ N_SAMPLES = 50
 EMPTY_INDICES = [12, 15, 19, 24, 27, 42, 47]  # 0-indexed positions in the 50-sample list
 
 
-def run_hummingbird(html, verbose=False):
+def run_pulpie(html, verbose=False):
     with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
         f.write(html)
         tmp_path = f.name
@@ -176,9 +176,9 @@ def main():
                     f = b["features"]
                     print(f"      text_len={f['text_len']} lr={f['link_ratio']} tag={f['tag_type']} depth={f['dom_depth']} | {b['text'][:100]}")
 
-        # 4. Run hummingbird with verbose
-        print(f"\n  Hummingbird output:")
-        stdout, stderr = run_hummingbird(html, verbose=True)
+        # 4. Run pulpie with verbose
+        print(f"\n  Pulpie output:")
+        stdout, stderr = run_pulpie(html, verbose=True)
         if stdout.strip():
             print(f"    Output preview: {stdout.strip()[:200]}")
         else:

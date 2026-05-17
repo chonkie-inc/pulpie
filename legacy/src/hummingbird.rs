@@ -29,9 +29,9 @@ fn main() {
     };
 
     let result = if html_mode {
-        hummingbird::extract_html(&html)
+        pulpie::extract_html(&html)
     } else {
-        hummingbird::extract(&html)
+        pulpie::extract(&html)
     };
 
     match result {

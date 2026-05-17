@@ -30,7 +30,7 @@ fn main() {
 
     // Warmup
     for page in pages.iter().take(5) {
-        let _ = hummingbird::extract(page);
+        let _ = pulpie::extract(page);
     }
 
     // Profiled benchmark — measure each stage
@@ -48,7 +48,7 @@ fn main() {
 
     for page in &pages {
         let t0 = Instant::now();
-        let sanitized = hummingbird::clean::sanitize(page);
+        let sanitized = pulpie::clean::sanitize(page);
         t_sanitize += t0.elapsed().as_micros();
 
         let t0 = Instant::now();
@@ -56,11 +56,11 @@ fn main() {
         t_parse += t0.elapsed().as_micros();
 
         let t0 = Instant::now();
-        hummingbird::clean::prune_boilerplate(&mut document);
+        pulpie::clean::prune_boilerplate(&mut document);
         t_prune += t0.elapsed().as_micros();
 
         let t0 = Instant::now();
-        let blocks = hummingbird::segment::segment(&document);
+        let blocks = pulpie::segment::segment(&document);
         t_segment += t0.elapsed().as_micros();
 
         if blocks.is_empty() {
@@ -69,7 +69,7 @@ fn main() {
         }
 
         let t0 = Instant::now();
-        let content_blocks = hummingbird::classify::filter_content(blocks);
+        let content_blocks = pulpie::classify::filter_content(blocks);
         t_classify += t0.elapsed().as_micros();
 
         if content_blocks.is_empty() {
@@ -80,7 +80,7 @@ fn main() {
         let t0 = Instant::now();
         let mut parts: Vec<String> = Vec::new();
         for block in &content_blocks {
-            let md = hummingbird::markdown::md_from(block.element);
+            let md = pulpie::markdown::md_from(block.element);
             let trimmed = md.trim().to_string();
             if !trimmed.is_empty() {
                 parts.push(trimmed);
@@ -90,7 +90,7 @@ fn main() {
         t_markdown += t0.elapsed().as_micros();
 
         let t0 = Instant::now();
-        let result = hummingbird::postprocess::postprocess(&combined);
+        let result = pulpie::postprocess::postprocess(&combined);
         t_postprocess += t0.elapsed().as_micros();
 
         if result.is_empty() {
@@ -141,14 +141,14 @@ fn main() {
         let start = Instant::now();
         let mut fast_ok = 0usize;
         for page in &pages {
-            let sanitized = hummingbird::clean::sanitize(page);
+            let sanitized = pulpie::clean::sanitize(page);
             let mut document = scraper::Html::parse_document(&sanitized);
-            hummingbird::clean::prune_boilerplate(&mut document);
-            let blocks = hummingbird::segment::segment(&document);
+            pulpie::clean::prune_boilerplate(&mut document);
+            let blocks = pulpie::segment::segment(&document);
             if blocks.is_empty() {
                 continue;
             }
-            let content = hummingbird::classify::filter_content_fast(blocks, n_trees);
+            let content = pulpie::classify::filter_content_fast(blocks, n_trees);
             if !content.is_empty() {
                 fast_ok += 1;
             }

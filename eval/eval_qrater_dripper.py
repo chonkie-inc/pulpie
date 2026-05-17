@@ -1,10 +1,10 @@
-"""Compare qrater clean rates: hummingbird vs Dripper vs Latte vs raw html2text.
+"""Compare qrater clean rates: pulpie vs Dripper vs Orange vs raw html2text.
 
 Runs all four extraction methods on the same WMB pages:
 1. Raw html2text (no extraction)
-2. Hummingbird GBM (espresso)
+2. Pulpie GBM (espresso)
 3. Dripper 0.6B (via local vLLM)
-4. Hummingbird Latte (encoder classifier)
+4. Pulpie Orange (encoder classifier)
 
 Scores each output with qrater EuroBERT-210m classifier.
 """
@@ -26,7 +26,7 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification, Auto
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(SCRIPT_DIR, '..', 'data')
 MINERU_PATH = os.path.join(SCRIPT_DIR, '..', '..', 'MinerU-HTML')
-HBIRD_BIN = os.path.join(SCRIPT_DIR, '..', 'target', 'release', 'hummingbird')
+HBIRD_BIN = os.path.join(SCRIPT_DIR, '..', 'target', 'release', 'pulpie')
 QRATER_MODEL = os.path.join(SCRIPT_DIR, '..', '..', 'gym', 'qrater',
                              'models', 'encoder-distill',
                              'eurobert-210m_0.6b-labels', 'final')
@@ -34,11 +34,11 @@ WMB_PATH = os.path.join(DATA_DIR, 'webmainbench.jsonl')
 
 VLLM_URL = "http://localhost:8235/v1/chat/completions"
 MODEL_NAME = "opendatalab/MinerU-HTML-v1.1-hunyuan0.5B-compact"
-LATTE_MODEL_PATH = os.path.join(DATA_DIR, 'block_classifier_0.6B', 'final')
+ORANGE_MODEL_PATH = os.path.join(DATA_DIR, 'block_classifier_0.6B', 'final')
 MAX_TOKENS = 4096
 MAX_TEXT_CHARS = 10000
 BLOCK_TOKEN = "[BLOCK]"
-LATTE_MAX_LENGTH = 32768
+ORANGE_MAX_LENGTH = 32768
 
 import importlib.util
 from dataclasses import dataclass, field
@@ -129,7 +129,7 @@ def html_to_text(html_str):
     return h.handle(html_str)
 
 
-def extract_with_hummingbird(html_content):
+def extract_with_pulpie(html_content):
     with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
         f.write(html_content)
         tmp_path = f.name
@@ -212,10 +212,10 @@ def insert_block_markers(simplified_html):
     return ''.join(parts), item_ids
 
 
-def load_latte_model(device):
-    tok = AutoTokenizer.from_pretrained(LATTE_MODEL_PATH, trust_remote_code=True)
+def load_orange_model(device):
+    tok = AutoTokenizer.from_pretrained(ORANGE_MODEL_PATH, trust_remote_code=True)
     mdl = AutoModelForTokenClassification.from_pretrained(
-        LATTE_MODEL_PATH, trust_remote_code=True,
+        ORANGE_MODEL_PATH, trust_remote_code=True,
         torch_dtype=torch.bfloat16, attn_implementation='sdpa',
     ).to(device).eval()
     for m in mdl.modules():
@@ -226,7 +226,7 @@ def load_latte_model(device):
 
 
 @torch.no_grad()
-def extract_with_latte(html_content, latte_model, latte_tokenizer, block_token_id, device):
+def extract_with_orange(html_content, latte_model, latte_tokenizer, block_token_id, device):
     try:
         simplified, map_html = simplify_html(html_content)
     except Exception:
@@ -237,7 +237,7 @@ def extract_with_latte(html_content, latte_model, latte_tokenizer, block_token_i
         return ''
 
     encoding = latte_tokenizer(
-        marked_html, truncation=True, max_length=LATTE_MAX_LENGTH,
+        marked_html, truncation=True, max_length=ORANGE_MAX_LENGTH,
         add_special_tokens=True, padding=False, return_tensors='pt',
     )
     input_ids = encoding['input_ids'].to(device)
@@ -301,8 +301,8 @@ def main():
     ).to(device)
     model.eval()
 
-    print(f'Loading Latte encoder on {device}...', flush=True)
-    latte_model, latte_tokenizer, block_token_id = load_latte_model(device)
+    print(f'Loading Orange encoder on {device}...', flush=True)
+    latte_model, latte_tokenizer, block_token_id = load_orange_model(device)
 
     print(f'Loading WebMainBench (English only)...', flush=True)
     pages = []
@@ -329,8 +329,8 @@ def main():
         raw_md = html_to_text(html)[:MAX_TEXT_CHARS]
         raw_texts.append(raw_md if raw_md.strip() else '')
 
-        # Hummingbird GBM (espresso)
-        hbird_md = extract_with_hummingbird(html)[:MAX_TEXT_CHARS]
+        # Pulpie GBM (espresso)
+        hbird_md = extract_with_pulpie(html)[:MAX_TEXT_CHARS]
         hbird_texts.append(hbird_md if hbird_md.strip() else '')
 
         # Dripper
@@ -342,8 +342,8 @@ def main():
         if not drip_md.strip():
             dripper_fail += 1
 
-        # Latte (encoder classifier)
-        latte_md = extract_with_latte(html, latte_model, latte_tokenizer, block_token_id, device)[:MAX_TEXT_CHARS]
+        # Orange (encoder classifier)
+        latte_md = extract_with_orange(html, latte_model, latte_tokenizer, block_token_id, device)[:MAX_TEXT_CHARS]
         latte_texts.append(latte_md if latte_md.strip() else '')
         if not latte_md.strip():
             latte_fail += 1
@@ -387,9 +387,9 @@ def main():
     n = len(pages)
     methods = [
         ('Raw html2text', raw_results),
-        ('Hummingbird Espresso (GBM)', hbird_results),
+        ('Pulpie Espresso (GBM)', hbird_results),
         ('Dripper 0.6B', dripper_results),
-        ('Hummingbird Latte (encoder)', latte_results),
+        ('Pulpie Orange (encoder)', latte_results),
     ]
 
     print(f'\n{"="*60}')
@@ -403,7 +403,7 @@ def main():
 
     # By difficulty
     print(f'\n  By difficulty:')
-    print(f'  {"Level":>7}  {"Raw":>10}  {"Espresso":>10}  {"Dripper":>10}  {"Latte":>10}')
+    print(f'  {"Level":>7}  {"Raw":>10}  {"Espresso":>10}  {"Dripper":>10}  {"Orange":>10}')
     print(f'  {"-"*53}')
     for level in ['simple', 'mid', 'hard']:
         idx = [i for i, p in enumerate(pages) if p.get('meta', {}).get('level') == level]
@@ -445,9 +445,9 @@ def main():
 
         text_methods = [
             ('Raw html2text', raw_texts),
-            ('Hummingbird Espresso (GBM)', hbird_texts),
+            ('Pulpie Espresso (GBM)', hbird_texts),
             ('Dripper 0.6B', dripper_texts),
-            ('Hummingbird Latte (encoder)', latte_texts),
+            ('Pulpie Orange (encoder)', latte_texts),
         ]
 
         print(f'  {"Method":<30} {"All":>8} {"Simple":>8} {"Mid":>8} {"Hard":>8}')

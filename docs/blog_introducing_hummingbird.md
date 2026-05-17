@@ -1,10 +1,10 @@
-# Introducing Hummingbird: Pareto-Optimal Models for Cleaning the Web
+# Introducing Pulpie: Pareto-Optimal Models for Cleaning the Web
 
 Every major open training corpus — C4 (Raffel et al., 2020), RefinedWeb (Penedo et al., 2023), FineWeb (Penedo et al., 2024), Dolma (Soldaini et al., 2024), DCLM (Li et al., 2024) — treats HTML-to-text extraction as a solved problem. Run Trafilatura, move on to the interesting stuff: filtering, deduplication, data mixing. But it isn't solved. The AICC paper (Ma et al., 2025) showed that simply switching from Trafilatura to a model-based extractor, with identical downstream processing, improved LLM benchmark accuracy by 1.08pp across 13 tasks. Extraction quality is as impactful as aggressive filtering — and almost nobody is working on it.
 
 A typical HTML page is 60-70% navigation, ads, cookie banners, sidebars, and footers. Heuristic tools like Trafilatura and Readability work on easy pages and fall apart on complex ones. LLM-based approaches like Dripper get much better quality, but at a cost that makes web-scale processing impractical.
 
-We built Hummingbird to close this gap: a family of encoder models that match LLM-level extraction quality at a fraction of the cost. The smallest model (210M parameters, 433MB) runs at 15 pages/sec on a $0.35/hr L4 GPU. Cleaning 1 billion pages costs about $6,500. The equivalent job with Dripper costs $105,000 on the same hardware.
+We built Pulpie to close this gap: a family of encoder models that match LLM-level extraction quality at a fraction of the cost. The smallest model (210M parameters, 433MB) runs at 15 pages/sec on a $0.35/hr L4 GPU. Cleaning 1 billion pages costs about $6,500. The equivalent job with Dripper costs $105,000 on the same hardware.
 
 This post covers how we got there.
 
@@ -22,15 +22,15 @@ The following table shows where each method lands on WebMainBench, a benchmark o
 
 | Method | Type | All | Simple | Mid | Hard | Empty |
 |--------|------|-----|--------|-----|------|-------|
-| **Hummingbird Latte Large** | **Encoder (2.1B)** | **0.873** | **0.914** | **0.878** | **0.827** | **21** |
+| **Pulpie Orange Large** | **Encoder (2.1B)** | **0.873** | **0.914** | **0.878** | **0.827** | **21** |
 | Dripper | Decoder (0.6B) | 0.864 | 0.914 | 0.865 | 0.818 | 135 |
-| **Hummingbird Latte Base** | **Encoder (610M)** | **0.863** | **0.906** | **0.868** | **0.818** | **36** |
-| **Hummingbird Latte Small** | **Encoder (210M)** | **0.862** | **0.906** | **0.868** | **0.813** | **45** |
+| **Pulpie Orange Base** | **Encoder (610M)** | **0.863** | **0.906** | **0.868** | **0.818** | **36** |
+| **Pulpie Orange Small** | **Encoder (210M)** | **0.862** | **0.906** | **0.868** | **0.813** | **45** |
 | magic-html | Heuristic | 0.700 | 0.773 | 0.697 | 0.637 | 384 |
 | Raw html2text | Baseline | 0.620 | 0.779 | 0.605 | 0.491 | 0 |
 | Trafilatura | Heuristic | 0.619 | 0.721 | 0.619 | 0.526 | 16 |
 
-All three Hummingbird models outperform Dripper on the full benchmark. The 210M model scores 0.862 — matching a 0.6B autoregressive model while being 3x smaller. The 2.1B teacher leads overall at 0.873, with the largest gains on Mid (+1.3pp) and Hard (+0.9pp) pages where context matters most. "Empty" counts pages where the method produced no output (context overflow for Dripper, no blocks detected for Hummingbird).
+All three Pulpie models outperform Dripper on the full benchmark. The 210M model scores 0.862 — matching a 0.6B autoregressive model while being 3x smaller. The 2.1B teacher leads overall at 0.873, with the largest gains on Mid (+1.3pp) and Hard (+0.9pp) pages where context matters most. "Empty" counts pages where the method produced no output (context overflow for Dripper, no blocks detected for Pulpie).
 
 ![Quality vs Cost of Web Content Extraction](fig1_quality_vs_cost.png)
 
@@ -42,13 +42,13 @@ Dripper solves this by generating a sequence of labels autoregressively — `1ma
 
 An encoder processes the entire page in a single forward pass. All blocks are classified simultaneously. The workload is compute-bound — it scales with FLOPS, not memory bandwidth. This has two practical consequences:
 
-1. **Encoders are fast on any GPU.** The 210M Hummingbird model runs at 15 pages/sec on an L4, 43 pages/sec on an A100. Dripper runs at 0.92 pages/sec on the same L4, 5.4 on the same A100. The gap is 16x on cheap hardware, 8x on expensive hardware.
+1. **Encoders are fast on any GPU.** The 210M Pulpie model runs at 15 pages/sec on an L4, 43 pages/sec on an A100. Dripper runs at 0.92 pages/sec on the same L4, 5.4 on the same A100. The gap is 16x on cheap hardware, 8x on expensive hardware.
 
-2. **Encoders get cheaper as GPUs get cheaper.** L4s have bad memory bandwidth but decent FLOPS per dollar. For bandwidth-bound workloads (autoregressive decoding), L4s are a poor choice. For compute-bound workloads (encoder inference), they're ideal. Hummingbird on L4 costs $6,500 per billion pages. Dripper on A100 costs $77,000. Dripper on L4 costs $105,000 — it's actually *more* expensive on cheaper hardware because the bandwidth bottleneck dominates.
+2. **Encoders get cheaper as GPUs get cheaper.** L4s have bad memory bandwidth but decent FLOPS per dollar. For bandwidth-bound workloads (autoregressive decoding), L4s are a poor choice. For compute-bound workloads (encoder inference), they're ideal. Pulpie on L4 costs $6,500 per billion pages. Dripper on A100 costs $77,000. Dripper on L4 costs $105,000 — it's actually *more* expensive on cheaper hardware because the bandwidth bottleneck dominates.
 
 ## Architecture
 
-Hummingbird's pipeline has four stages:
+Pulpie's pipeline has four stages:
 
 ```
 raw HTML → simplify_html → tokenize + chunk → encoder classify → reconstruct
@@ -96,7 +96,7 @@ The teacher reached 0.873 ROUGE-5 on the full 6,647-page English WebMainBench su
 
 ### Distillation: 2.1B → 210M
 
-We distilled the 2.1B teacher into two smaller students: a 610M (Latte Base) and a 210M (Latte Small).
+We distilled the 2.1B teacher into two smaller students: a 610M (Orange Base) and a 210M (Orange Small).
 
 Following Hinton et al. (2015), distillation used KL divergence loss (α=0.7) combined with hard-label cross-entropy (α=0.3), temperature 2.0, same data. Each distillation took about 2 hours on 4× A100.
 
@@ -104,9 +104,9 @@ The results were surprising:
 
 | Model | Parameters | ROUGE-5 | vs Teacher |
 |-------|-----------|---------|------------|
-| Latte Large (teacher) | 2.1B | 0.873 | — |
-| Latte Base | 610M | 0.863 | -1.0pp |
-| **Latte Small** | **210M** | **0.862** | **-1.1pp** |
+| Orange Large (teacher) | 2.1B | 0.873 | — |
+| Orange Base | 610M | 0.863 | -1.0pp |
+| **Orange Small** | **210M** | **0.862** | **-1.1pp** |
 
 ![Distillation: Smaller Can Be Better](fig4_distillation.png)
 
@@ -120,16 +120,16 @@ On the full English subset of WebMainBench (6,647 pages, all difficulty levels):
 
 | Method | Size | All | Simple | Mid | Hard | P | R |
 |--------|------|-----|--------|-----|------|---|---|
-| Hummingbird Latte Large | 2.1B | 0.873 | 0.914 | 0.878 | 0.827 | 0.865 | 0.917 |
+| Pulpie Orange Large | 2.1B | 0.873 | 0.914 | 0.878 | 0.827 | 0.865 | 0.917 |
 | Dripper | 0.6B | 0.864 | 0.914 | 0.865 | 0.818 | 0.860 | 0.901 |
-| Hummingbird Latte Base | 610M | 0.863 | 0.906 | 0.868 | 0.818 | 0.858 | 0.906 |
-| Hummingbird Latte Small | 210M | 0.862 | 0.906 | 0.868 | 0.813 | 0.854 | 0.910 |
+| Pulpie Orange Base | 610M | 0.863 | 0.906 | 0.868 | 0.818 | 0.858 | 0.906 |
+| Pulpie Orange Small | 210M | 0.862 | 0.906 | 0.868 | 0.813 | 0.854 | 0.910 |
 | magic-html | — | 0.700 | 0.773 | 0.697 | 0.637 | 0.778 | 0.704 |
 | Trafilatura | — | 0.619 | 0.721 | 0.619 | 0.526 | 0.688 | 0.610 |
 
-Hummingbird Latte Large leads at 0.873, outperforming Dripper by 0.9pp overall. The gap widens on Mid (+1.3pp) and Hard (+0.9pp) pages where bidirectional context helps most. The 210M model matches Dripper (0.862 vs 0.864) while being 3x smaller.
+Pulpie Orange Large leads at 0.873, outperforming Dripper by 0.9pp overall. The gap widens on Mid (+1.3pp) and Hard (+0.9pp) pages where bidirectional context helps most. The 210M model matches Dripper (0.862 vs 0.864) while being 3x smaller.
 
-All Hummingbird models have higher recall than Dripper (0.906-0.917 vs 0.901), meaning they extract more of the actual content. Dripper's 135 empty pages (context overflow) versus Hummingbird Large's 21 show another practical advantage of the encoder approach — no context length limit issues.
+All Pulpie models have higher recall than Dripper (0.906-0.917 vs 0.901), meaning they extract more of the actual content. Dripper's 135 empty pages (context overflow) versus Pulpie Large's 21 show another practical advantage of the encoder approach — no context length limit issues.
 
 ### Speed
 
@@ -137,11 +137,11 @@ All measurements on the same NVIDIA L4 GPU (23GB, $0.35/hr on RunPod), using 500
 
 | Model | Architecture | Pages/sec | ms/page |
 |-------|-------------|-----------|---------|
-| Hummingbird 210M | Encoder (SDPA) | 15.1 | 66 |
+| Pulpie 210M | Encoder (SDPA) | 15.1 | 66 |
 | Dripper 0.6B | Decoder (vLLM) | 0.92 | 1,087 |
 | **Ratio** | | **16.4x** | |
 
-The pipeline breakdown for Hummingbird (sequential, single GPU):
+The pipeline breakdown for Pulpie (sequential, single GPU):
 
 | Stage | Time | % |
 |-------|------|---|
@@ -155,8 +155,8 @@ GPU is the bottleneck at 65% of wall time, but the model only uses 433MB VRAM �
 
 | Setup | Pages/sec | GPU-hours / 1B | Cost / 1B pages |
 |-------|-----------|---------------|----------------|
-| **Hummingbird on L4** | **15.1** | **18,400** | **$6,500** |
-| Hummingbird on A100 | 43 | 6,460 | $9,700 |
+| **Pulpie on L4** | **15.1** | **18,400** | **$6,500** |
+| Pulpie on A100 | 43 | 6,460 | $9,700 |
 | Dripper on A100 | 5.38 | 51,600 | $77,000 |
 | Dripper on L4 | 0.92 | 301,000 | $105,000 |
 
@@ -166,7 +166,7 @@ GPU is the bottleneck at 65% of wall time, but the model only uses 433MB VRAM �
 
 ## The economics of encoders vs decoders
 
-The 16.4x throughput gap on L4 deserves explanation. It's not just about parameter count — Dripper is 0.6B, Hummingbird is 0.2B, that's only 3x.
+The 16.4x throughput gap on L4 deserves explanation. It's not just about parameter count — Dripper is 0.6B, Pulpie is 0.2B, that's only 3x.
 
 The gap is architectural. Autoregressive decoding generates tokens one at a time. Each token requires reading the full KV cache from GPU memory. This makes throughput proportional to memory bandwidth:
 
@@ -175,10 +175,10 @@ The gap is architectural. Autoregressive decoding generates tokens one at a time
 
 Encoder inference runs a single forward pass over the entire input. This is a dense matmul workload that scales with FLOPS:
 
-- A100: 312 TFLOPS → Hummingbird at 43 pps
-- L4: ~120 TFLOPS → Hummingbird at 15.1 pps (35% of A100 — tracks the FLOPS ratio)
+- A100: 312 TFLOPS → Pulpie at 43 pps
+- L4: ~120 TFLOPS → Pulpie at 15.1 pps (35% of A100 — tracks the FLOPS ratio)
 
-The practical consequence: as GPUs get cheaper, encoders benefit more. L4s cost ~4x less per hour than A100s. Dripper loses more throughput than it gains in savings. Hummingbird comes out ahead.
+The practical consequence: as GPUs get cheaper, encoders benefit more. L4s cost ~4x less per hour than A100s. Dripper loses more throughput than it gains in savings. Pulpie comes out ahead.
 
 At web scale (billions of pages), this is the difference between a $6,500 job and a $105,000 job.
 
@@ -186,33 +186,33 @@ At web scale (billions of pages), this is the difference between a $6,500 job an
 
 | Name | HuggingFace | Parameters | ROUGE-5 | Notes |
 |------|-------------|-----------|---------|-------|
-| Latte Large | `chonkie-ai/hummingbird-latte-large-v1` | 2.1B | 0.873 | Teacher model |
-| Latte Base | `chonkie-ai/hummingbird-latte-base-v1` | 610M | 0.863 | Distilled from Large |
-| **Latte Small** | **`chonkie-ai/hummingbird-latte-small-v1`** | **210M** | **0.862** | **Recommended** |
+| Orange Large | `chonkie-ai/pulpie-orange-large-v1` | 2.1B | 0.873 | Teacher model |
+| Orange Base | `chonkie-ai/pulpie-orange-base-v1` | 610M | 0.863 | Distilled from Large |
+| **Orange Small** | **`chonkie-ai/pulpie-orange-small-v1`** | **210M** | **0.862** | **Recommended** |
 
 All models are built on EuroBERT (Boizard et al., 2025) and use the same `<|sep|>` block-marker architecture. They share a tokenizer and are interchangeable in the pipeline.
 
-Latte Small is the recommended model. It matches the teacher at 1/10th the size, fits in 433MB VRAM, and runs on any GPU (L4, T4, RTX 3090, or even integrated graphics for small batches).
+Orange Small is the recommended model. It matches the teacher at 1/10th the size, fits in 433MB VRAM, and runs on any GPU (L4, T4, RTX 3090, or even integrated graphics for small batches).
 
 ## Get started
 
-The Hummingbird models are available on HuggingFace. To start cleaning web pages:
+The Pulpie models are available on HuggingFace. To start cleaning web pages:
 
 ```bash
-pip install hummingbird-extract
+pip install pulpie
 ```
 
 ```python
-from hummingbird import extract
+from pulpie import extract
 
 markdown = extract(html)
 ```
 
-If you're processing web data at scale — building training corpora, running RAG pipelines over live pages, or cleaning Common Crawl snapshots — and want to talk about how Hummingbird fits into your stack, reach out. We're at [chonkie.ai](https://chonkie.ai), [@chonabordi](https://twitter.com/chonabordi) on Twitter, or come find us on [Discord](https://discord.gg/chonkie).
+If you're processing web data at scale — building training corpora, running RAG pipelines over live pages, or cleaning Common Crawl snapshots — and want to talk about how Pulpie fits into your stack, reach out. We're at [chonkie.ai](https://chonkie.ai), [@chonabordi](https://twitter.com/chonabordi) on Twitter, or come find us on [Discord](https://discord.gg/chonkie).
 
 ## Acknowledgements
 
-Hummingbird builds directly on the work of the MinerU-HTML and Dripper team (Ma et al., 2025). Their `simplify_html` preprocessing, block-level annotation scheme, and the WebMainBench benchmark are foundational to everything in this post. We also use their Dripper 0.6B model for cross-validating our training labels. Open science makes work like this possible — we're grateful they released their tools and data.
+Pulpie builds directly on the work of the MinerU-HTML and Dripper team (Ma et al., 2025). Their `simplify_html` preprocessing, block-level annotation scheme, and the WebMainBench benchmark are foundational to everything in this post. We also use their Dripper 0.6B model for cross-validating our training labels. Open science makes work like this possible — we're grateful they released their tools and data.
 
 ## References
 

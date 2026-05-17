@@ -341,8 +341,8 @@ def main():
         (f'** Dripper native (all {n} pages) **', avg_all, 0, 0, 0),
         ('Dripper 0.6B (paper)', 0.878, 0.921, 0.880, 0.831),
         ('DeepSeek V3.2 (short_compact)', 0.865, 0.932, 0.875, 0.786),
-        ('Hummingbird Latte Large (2.1B)', 0.862, 0.928, 0.856, 0.807),
-        ('Hummingbird Latte Base (0.6B)', 0.847, 0.907, 0.848, 0.787),
+        ('Pulpie Orange Large (2.1B)', 0.862, 0.928, 0.856, 0.807),
+        ('Pulpie Orange Base (0.6B)', 0.847, 0.907, 0.848, 0.787),
         ('DeepSeek V3.2 (v0, Bedrock)', 0.840, 0.930, 0.823, 0.774),
     ]
     comparisons.sort(key=lambda x: -x[1])

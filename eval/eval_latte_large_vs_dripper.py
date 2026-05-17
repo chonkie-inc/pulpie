@@ -1,4 +1,4 @@
-"""Compare Hummingbird Latte Large (2.1B) vs Dripper on WMB with ROUGE-5 + qrater.
+"""Compare Pulpie Orange Large (2.1B) vs Dripper on WMB with ROUGE-5 + qrater.
 
 Runs both methods on same pages, scores with:
 1. ROUGE-5 F1 (whitespace tokenized)
@@ -111,11 +111,11 @@ from block_chunker import extract_blocks, tokenize_blocks, pack_chunks, SEP_TOKE
 # ── Config ──
 WMB_PATH = os.path.join(DATA_DIR, 'webmainbench.jsonl')
 DRIPPER_MODEL = "opendatalab/MinerU-HTML-v1.1-hunyuan0.5B-compact"
-LATTE_LARGE_PATH = os.path.join(DATA_DIR, 'block_classifier_eurobert_2.1B', 'checkpoint-5250')
+ORANGE_LARGE_PATH = os.path.join(DATA_DIR, 'block_classifier_eurobert_2.1B', 'checkpoint-5250')
 QRATER_MODEL = os.path.join(SCRIPT_DIR, '..', '..', 'gym', 'qrater',
                              'models', 'encoder-distill',
                              'eurobert-210m_0.6b-labels', 'final')
-LATTE_LARGE_MAX_TOKENS = 8192
+ORANGE_LARGE_MAX_TOKENS = 8192
 DRIPPER_MAX_MODEL_LEN = 32768
 DRIPPER_MAX_TOKENS = 16384
 MAX_TEXT_CHARS = 10000
@@ -149,10 +149,10 @@ def rouge_n_f1(reference, prediction, n=5):
     return 2 * precision * recall / (precision + recall)
 
 
-# ── Latte Large (2.1B, <|sep|> chunking) ──
+# ── Orange Large (2.1B, <|sep|> chunking) ──
 
 @torch.no_grad()
-def classify_latte_large(model, tokenizer, sep_token_id, simplified, device):
+def classify_orange_large(model, tokenizer, sep_token_id, simplified, device):
     blocks = extract_blocks(simplified)
     if not blocks:
         return {}
@@ -165,7 +165,7 @@ def classify_latte_large(model, tokenizer, sep_token_id, simplified, device):
 
     block_token_ids = tokenize_blocks(blocks, tokenizer)
     chunks = pack_chunks(
-        block_token_ids, max_tokens=LATTE_LARGE_MAX_TOKENS,
+        block_token_ids, max_tokens=ORANGE_LARGE_MAX_TOKENS,
         sep_token_id=sep_token_id,
         bos_token_id=tokenizer.bos_token_id,
         eos_token_id=tokenizer.eos_token_id,
@@ -249,17 +249,17 @@ def main():
             simp_fail += 1
     print(f'  {len(pages) - simp_fail} ok, {simp_fail} failed', flush=True)
 
-    # ── Latte Large ──
-    print(f'\nLoading Latte Large (2.1B) on {device}...', flush=True)
-    large_tokenizer = AutoTokenizer.from_pretrained(LATTE_LARGE_PATH, trust_remote_code=True)
+    # ── Orange Large ──
+    print(f'\nLoading Orange Large (2.1B) on {device}...', flush=True)
+    large_tokenizer = AutoTokenizer.from_pretrained(ORANGE_LARGE_PATH, trust_remote_code=True)
     large_model = AutoModelForTokenClassification.from_pretrained(
-        LATTE_LARGE_PATH, trust_remote_code=True,
+        ORANGE_LARGE_PATH, trust_remote_code=True,
         torch_dtype=torch.bfloat16, attn_implementation='sdpa',
     ).to(device).eval()
     sep_token_id = large_tokenizer.convert_tokens_to_ids(SEP_TOKEN)
     print(f'  <|sep|> id = {sep_token_id}', flush=True)
 
-    print(f'\nRunning Latte Large...', flush=True)
+    print(f'\nRunning Orange Large...', flush=True)
     latte_texts = []
     latte_fail = 0
     t0 = time.time()
@@ -268,7 +268,7 @@ def main():
             latte_texts.append('')
             latte_fail += 1
             continue
-        labels = classify_latte_large(large_model, large_tokenizer, sep_token_id, simplified, device)
+        labels = classify_orange_large(large_model, large_tokenizer, sep_token_id, simplified, device)
         text = labels_to_text(labels, map_html)
         latte_texts.append(text[:MAX_TEXT_CHARS])
         if not text:
@@ -279,7 +279,7 @@ def main():
     latte_time = time.time() - t0
     print(f'  Done in {latte_time:.0f}s ({len(pages)/latte_time:.1f} pg/s), fail={latte_fail}', flush=True)
 
-    # Free Latte Large from GPU
+    # Free Orange Large from GPU
     del large_model
     torch.cuda.empty_cache()
 
@@ -388,7 +388,7 @@ def main():
     # ── Report ──
     n = len(pages)
     print(f'\n{"="*70}')
-    print(f'LATTE LARGE vs DRIPPER — WMB English, {n} pages')
+    print(f'ORANGE LARGE vs DRIPPER — WMB English, {n} pages')
     print(f'{"="*70}')
 
     # ROUGE-5
@@ -396,7 +396,7 @@ def main():
     print(f'  {"Method":<35} {"All":>8} {"Simple":>8} {"Mid":>8} {"Hard":>8}')
     print(f'  {"-"*67}')
 
-    for name, texts in [('Hummingbird Latte Large (2.1B)', latte_texts),
+    for name, texts in [('Pulpie Orange Large (2.1B)', latte_texts),
                         ('Dripper 0.6B (native vLLM)', dripper_texts)]:
         scores_by_level = {}
         scores_all = []
@@ -418,7 +418,7 @@ def main():
     print(f'  {"Method":<35} {"All":>8} {"Simple":>8} {"Mid":>8} {"Hard":>8}')
     print(f'  {"-"*67}')
 
-    for name, results in [('Hummingbird Latte Large (2.1B)', latte_qrater),
+    for name, results in [('Pulpie Orange Large (2.1B)', latte_qrater),
                           ('Dripper 0.6B (native vLLM)', dripper_qrater)]:
         all_clean = sum(1 for r in results if r == 'clean') / n * 100
         level_clean = {}

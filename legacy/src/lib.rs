@@ -1,4 +1,4 @@
-//! Hummingbird: fast CPU-only web content extraction pipeline.
+//! Pulpie: fast CPU-only web content extraction pipeline.
 //!
 //! Pipeline: sanitize → prune → segment → classify → markdown → cleanup
 

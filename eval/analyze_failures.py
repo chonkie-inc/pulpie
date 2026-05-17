@@ -8,7 +8,7 @@ import tempfile
 DATA_DIR = os.path.dirname(os.path.abspath(__file__))
 BENCH_PATH = os.path.join(os.path.dirname(DATA_DIR), "data", "webmainbench.jsonl")
 RESULTS_PATH = os.path.join(DATA_DIR, "eval_sample50_results.json")
-HBIRD_BIN = os.path.join(os.path.dirname(DATA_DIR), "target", "release", "hummingbird")
+HBIRD_BIN = os.path.join(os.path.dirname(DATA_DIR), "target", "release", "pulpie")
 
 import random
 random.seed(42)

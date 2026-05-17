@@ -2,7 +2,7 @@
 
 ## Motivation
 
-Hummingbird's LightGBM classifier is saturated at ~0.81 ROUGE-5 / 66% qrater clean rate. Dripper 0.6B achieves 0.878 ROUGE-5 / 80% qrater clean by seeing the full page context, but uses autoregressive decoding — fundamentally slow (~20 pg/s batched, ~100K A100-hours for AICC-scale 7.3B pages).
+Pulpie's LightGBM classifier is saturated at ~0.81 ROUGE-5 / 66% qrater clean rate. Dripper 0.6B achieves 0.878 ROUGE-5 / 80% qrater clean by seeing the full page context, but uses autoregressive decoding — fundamentally slow (~20 pg/s batched, ~100K A100-hours for AICC-scale 7.3B pages).
 
 **Key insight**: Dripper is doing classification (every output token is one of exactly two choices: "main" or "other"), but paying the cost of generation. An encoder can classify all blocks in a single forward pass — 10-50x faster.
 
@@ -22,7 +22,7 @@ Insert a special `[BLOCK]` token at each block boundary in the simplified HTML. 
 **Input format:**
 ```
 [BLOCK] Nav Home About Contact [BLOCK] Article Title [BLOCK] This is the
-main content paragraph about hummingbirds... [BLOCK] Related articles sidebar
+main content paragraph about pulpie... [BLOCK] Related articles sidebar
 ```
 
 **Architecture:**

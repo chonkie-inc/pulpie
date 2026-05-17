@@ -16,7 +16,7 @@ import numpy as np
 from bs4 import BeautifulSoup, Tag
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-HUMMINGBIRD_BIN = os.path.join(SCRIPT_DIR, "..", "target", "release", "export_features")
+PULPIE_BIN = os.path.join(SCRIPT_DIR, "..", "target", "release", "export_features")
 WEBMAINBENCH = os.path.join(SCRIPT_DIR, "webmainbench.jsonl")
 
 BLOCK_TAGS = {
@@ -84,7 +84,7 @@ def strip_annotations(html):
 
 def run_export_features(html):
     result = subprocess.run(
-        [HUMMINGBIRD_BIN], input=html, capture_output=True, text=True, timeout=30,
+        [PULPIE_BIN], input=html, capture_output=True, text=True, timeout=30,
     )
     if result.returncode != 0:
         return []
@@ -335,7 +335,7 @@ def main():
     print(f"  {'Method':<30} {'ROUGE-5 F1':>10}")
     print(f"  {'-'*42}")
     print(f"  {'Potion classifier':<30} {avg_rouge:>10.4f}")
-    print(f"  {'Hummingbird GBM (h2t)':<30} {'0.8059':>10}")
+    print(f"  {'Pulpie GBM (h2t)':<30} {'0.8059':>10}")
     print(f"  {'Dripper 0.6B (paper)':<30} {'0.8780':>10}")
 
 

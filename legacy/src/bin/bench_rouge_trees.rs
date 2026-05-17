@@ -49,18 +49,18 @@ struct Page {
 }
 
 fn run_pipeline_with_trees(page: &Page, n_trees: Option<usize>) -> String {
-    let sanitized = hummingbird::clean::sanitize(&page.html);
+    let sanitized = pulpie::clean::sanitize(&page.html);
     let mut document = scraper::Html::parse_document(&sanitized);
-    hummingbird::clean::prune_boilerplate(&mut document);
+    pulpie::clean::prune_boilerplate(&mut document);
 
-    let blocks = hummingbird::segment::segment(&document);
+    let blocks = pulpie::segment::segment(&document);
     if blocks.is_empty() {
         return String::new();
     }
 
     let content_blocks = match n_trees {
-        Some(n) => hummingbird::classify::filter_content_fast(blocks, n),
-        None => hummingbird::classify::filter_content(blocks),
+        Some(n) => pulpie::classify::filter_content_fast(blocks, n),
+        None => pulpie::classify::filter_content(blocks),
     };
 
     if content_blocks.is_empty() {
@@ -69,7 +69,7 @@ fn run_pipeline_with_trees(page: &Page, n_trees: Option<usize>) -> String {
 
     let mut parts: Vec<String> = Vec::new();
     for block in &content_blocks {
-        let md = hummingbird::markdown::md_from(block.element);
+        let md = pulpie::markdown::md_from(block.element);
         let trimmed = md.trim().to_string();
         if !trimmed.is_empty() {
             parts.push(trimmed);
@@ -77,7 +77,7 @@ fn run_pipeline_with_trees(page: &Page, n_trees: Option<usize>) -> String {
     }
 
     let combined = parts.join("\n\n");
-    hummingbird::postprocess::postprocess(&combined)
+    pulpie::postprocess::postprocess(&combined)
 }
 
 fn main() {

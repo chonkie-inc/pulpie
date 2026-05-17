@@ -3,7 +3,7 @@
 Measures true generalization by splitting at the PAGE level (not block level),
 so no blocks from a test page leak into training.
 
-Also evaluates end-to-end ROUGE-5 on the held-out pages via hummingbird --html + html2text.
+Also evaluates end-to-end ROUGE-5 on the held-out pages via pulpie --html + html2text.
 """
 
 import json
@@ -23,7 +23,7 @@ DATA_DIR = os.path.dirname(os.path.abspath(__file__))
 TRAIN_PATH = os.path.join(DATA_DIR, "training_data_dom.csv")
 FEATURES_PATH = os.path.join(DATA_DIR, "selected_features.json")
 BENCH_PATH = os.path.join(DATA_DIR, "webmainbench.jsonl")
-HBIRD_BIN = os.path.join(DATA_DIR, "..", "target", "release", "hummingbird")
+PULPIE_BIN = os.path.join(DATA_DIR, "..", "target", "release", "hummingbird")
 MODEL_SPLIT_PATH = os.path.join(DATA_DIR, "model_split_test.txt")
 
 
@@ -142,7 +142,7 @@ def main():
 
     # ── End-to-end ROUGE-5 on held-out pages ──
     # We need to map test page_ids back to WebMainBench records
-    # and run hummingbird with the split model
+    # and run pulpie with the split model
     print(f"\n{'='*60}")
     print(f"END-TO-END ROUGE-5 (held-out pages, using split model)")
     print(f"{'='*60}")
@@ -177,7 +177,7 @@ def main():
         print(f"  WARNING: {len(successful_pages)} bench pages vs {n_pages} inferred pages")
         print(f"  Using first {n_pages} successful pages")
 
-    # Run hummingbird with SPLIT model on test pages
+    # Run pulpie with SPLIT model on test pages
     # First, swap the model file
     orig_model = os.path.join(DATA_DIR, "model_dom.txt")
     backup_model = os.path.join(DATA_DIR, "model_dom.txt.bak")
@@ -185,8 +185,8 @@ def main():
     os.rename(orig_model, backup_model)
     os.rename(MODEL_SPLIT_PATH, orig_model)
 
-    # Rebuild hummingbird with the split model
-    print("  Rebuilding hummingbird with split model...", flush=True)
+    # Rebuild pulpie with the split model
+    print("  Rebuilding pulpie with split model...", flush=True)
     build_result = subprocess.run(
         ["cargo", "build", "--release"],
         cwd=os.path.join(DATA_DIR, ".."),
@@ -225,7 +225,7 @@ def main():
             f.write(html)
             tmp = f.name
         try:
-            r = subprocess.run([HBIRD_BIN, "--html", tmp], capture_output=True, text=True, timeout=30)
+            r = subprocess.run([PULPIE_BIN, "--html", tmp], capture_output=True, text=True, timeout=30)
             extracted_html = r.stdout.strip()
         except Exception:
             extracted_html = ""

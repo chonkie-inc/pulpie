@@ -1,7 +1,7 @@
-"""Evaluate hummingbird on WebMainBench (English-only) using html2text canonicalization.
+"""Evaluate pulpie on WebMainBench (English-only) using html2text canonicalization.
 
 Matches the official WebMainBench eval pipeline:
-  - Extract content HTML via hummingbird --html
+  - Extract content HTML via pulpie --html
   - Convert through html2text (bodywidth=0, ignore_links, ignore_images)
   - Compare against convert_main_content (also html2text output)
   - ROUGE-5 F1 with whitespace tokenization (English-only, so jieba not needed)
@@ -17,7 +17,7 @@ import html2text
 
 DATA_DIR = os.path.dirname(os.path.abspath(__file__))
 BENCH_PATH = os.path.join(os.path.dirname(DATA_DIR), "data", "webmainbench.jsonl")
-HBIRD_BIN = os.path.join(os.path.dirname(DATA_DIR), "target", "release", "hummingbird")
+HBIRD_BIN = os.path.join(os.path.dirname(DATA_DIR), "target", "release", "pulpie")
 
 
 def html_to_text(html_str):
@@ -51,7 +51,7 @@ def rouge_n_f1(reference, prediction, n=5):
 
 
 def extract_html(html_content):
-    """Extract content HTML via hummingbird --html."""
+    """Extract content HTML via pulpie --html."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
         f.write(html_content)
         tmp_path = f.name
@@ -68,7 +68,7 @@ def extract_html(html_content):
 
 
 def extract_md(html_content):
-    """Extract markdown via hummingbird (normal mode)."""
+    """Extract markdown via pulpie (normal mode)."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
         f.write(html_content)
         tmp_path = f.name
@@ -97,8 +97,8 @@ def main():
             records.append(rec)
     print(f"  {len(records)} English pages (of {len(lines)} total)", flush=True)
 
-    scores_h2t = []       # hummingbird --html → html2text
-    scores_native = []    # hummingbird native markdown
+    scores_h2t = []       # pulpie --html → html2text
+    scores_native = []    # pulpie native markdown
     scores_by_level_h2t = {}
     scores_by_level_native = {}
     empty_h2t = 0
@@ -150,7 +150,7 @@ def main():
     avg_native = sum(scores_native) / max(n, 1)
 
     print(f"\n{'='*70}", flush=True)
-    print(f"HUMMINGBIRD — WebMainBench ROUGE-5 F1 (English only, {n} pages)", flush=True)
+    print(f"PULPIE — WebMainBench ROUGE-5 F1 (English only, {n} pages)", flush=True)
     print(f"{'='*70}", flush=True)
 
     print(f"\n  {'':>30} {'All':>8} {'Simple':>8} {'Mid':>8} {'Hard':>8}", flush=True)
@@ -190,12 +190,12 @@ def main():
         vals = scores_by_level_h2t.get(lev, [])
         h2t_avgs[lev] = sum(vals) / max(len(vals), 1)
 
-    hbird = ("** HUMMINGBIRD (h2t) **", avg_h2t, h2t_avgs["simple"], h2t_avgs["mid"], h2t_avgs["hard"])
+    hbird = ("** PULPIE (h2t) **", avg_h2t, h2t_avgs["simple"], h2t_avgs["mid"], h2t_avgs["hard"])
     all_entries = comparisons + [hbird]
     all_entries.sort(key=lambda x: -x[1])
 
     for name, r_all, r_s, r_m, r_h in all_entries:
-        marker = " <--" if "HUMMINGBIRD" in name else ""
+        marker = " <--" if "PULPIE" in name else ""
         print(f"  {name:<30} {r_all:>8.4f} {r_s:>8.4f} {r_m:>8.4f} {r_h:>8.4f}{marker}", flush=True)
 
     print(f"\n  NOTE: Dripper paper numbers include non-English pages.", flush=True)

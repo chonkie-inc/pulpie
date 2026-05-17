@@ -1,6 +1,6 @@
 """Generate training data from CC labeled pages (parallelized).
 
-Projects Dripper's _item_id labels onto Hummingbird's block segmentation
+Projects Dripper's _item_id labels onto Pulpie's block segmentation
 via text overlap matching. Uses multiprocessing for speed.
 
 Input: cc_labeled_*.jsonl (labels) + cc_sampled*.jsonl (HTML)
@@ -21,7 +21,7 @@ from multiprocessing import Pool
 from functools import partial
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-HUMMINGBIRD_BIN = os.path.join(SCRIPT_DIR, "..", "target", "release", "export_features")
+PULPIE_BIN = os.path.join(SCRIPT_DIR, "..", "target", "release", "export_features")
 OUTPUT_PATH = os.path.join(SCRIPT_DIR, "training_data_cc.csv")
 MINERU_PATH = os.path.join(SCRIPT_DIR, '..', '..', 'MinerU-HTML')
 NUM_WORKERS = 32
@@ -132,16 +132,16 @@ def process_page(args):
     if not dripper_texts:
         return None, 'no_dripper_texts'
 
-    # Step 2: Hummingbird features on raw HTML
+    # Step 2: Pulpie features on raw HTML
     try:
         result = subprocess.run(
-            [HUMMINGBIRD_BIN], input=html, capture_output=True, text=True, timeout=30,
+            [PULPIE_BIN], input=html, capture_output=True, text=True, timeout=30,
         )
         if result.returncode != 0:
-            return None, 'hbird_error'
+            return None, 'pulpie_error'
         rust_blocks = json.loads(result.stdout)
     except Exception:
-        return None, 'hbird_error'
+        return None, 'pulpie_error'
 
     if not rust_blocks:
         return None, 'no_blocks'
@@ -198,7 +198,7 @@ def process_page(args):
 
 
 def main():
-    if not os.path.exists(HUMMINGBIRD_BIN):
+    if not os.path.exists(PULPIE_BIN):
         print("ERROR: Build first: cargo build --release")
         sys.exit(1)
 

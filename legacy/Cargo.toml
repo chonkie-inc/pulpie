@@ -1,5 +1,5 @@
 [package]
-name = "hummingbird"
+name = "pulpie"
 version = "0.1.0"
 edition = "2021"
 description = "Fast CPU-only web content extraction pipeline"
@@ -14,7 +14,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [[bin]]
-name = "hummingbird"
+name = "pulpie"
 path = "src/bin/hummingbird.rs"
 
 [[bin]]
@@ -26,5 +26,5 @@ name = "bench_rouge_trees"
 path = "src/bin/bench_rouge_trees.rs"
 
 [lib]
-name = "hummingbird"
+name = "pulpie"
 path = "src/lib.rs"

@@ -1,4 +1,4 @@
-"""Sample 50 pages from WebMainBench, extract with hummingbird, score with qrater."""
+"""Sample 50 pages from WebMainBench, extract with pulpie, score with qrater."""
 
 import json
 import os
@@ -11,7 +11,7 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
 DATA_DIR = os.path.dirname(os.path.abspath(__file__))
 BENCH_PATH = os.path.join(os.path.dirname(DATA_DIR), "data", "webmainbench.jsonl")
-HBIRD_BIN = os.path.join(os.path.dirname(DATA_DIR), "target", "release", "hummingbird")
+HBIRD_BIN = os.path.join(os.path.dirname(DATA_DIR), "target", "release", "pulpie")
 QRATER_PATH = "/home/bhavnick/workspace/gym/qrater/models/qwen-0.6b-distill/seed42_lr5e-05_ep3_T1.0_a0.5/final"
 
 N_SAMPLES = 50
@@ -40,8 +40,8 @@ def score_text(text, tokenizer, model):
     return label, clean_prob
 
 
-def extract_with_hummingbird(html_content):
-    """Write HTML to temp file, run hummingbird, return markdown."""
+def extract_with_pulpie(html_content):
+    """Write HTML to temp file, run pulpie, return markdown."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
         f.write(html_content)
         tmp_path = f.name
@@ -79,7 +79,7 @@ def main():
     for i, page in enumerate(pages):
         url = page["url"]
         html = page["html"]
-        md = extract_with_hummingbird(html)
+        md = extract_with_pulpie(html)
         md_chars = len(md.strip())
 
         if md_chars < 10:

@@ -1,7 +1,7 @@
-"""Error analysis of hummingbird pipeline on WebMainBench (English only).
+"""Error analysis of pulpie pipeline on WebMainBench (English only).
 
 Categorizes pages by failure mode:
-  - Empty extraction (hummingbird produces nothing)
+  - Empty extraction (pulpie produces nothing)
   - Low precision (boilerplate leaking into output)
   - Low recall (missing content)
   - Formatting mismatch (content correct but formatting differs)
@@ -24,7 +24,7 @@ import html2text
 
 DATA_DIR = os.path.dirname(os.path.abspath(__file__))
 BENCH_PATH = os.path.join(os.path.dirname(DATA_DIR), "data", "webmainbench.jsonl")
-HBIRD_BIN = os.path.join(os.path.dirname(DATA_DIR), "target", "release", "hummingbird")
+HBIRD_BIN = os.path.join(os.path.dirname(DATA_DIR), "target", "release", "pulpie")
 
 
 def ngrams(tokens, n):
@@ -69,7 +69,7 @@ def strip_formatting(text):
 
 
 def extract_h2t(html_content):
-    """Extract via hummingbird --html then html2text."""
+    """Extract via pulpie --html then html2text."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
         f.write(html_content)
         tmp_path = f.name

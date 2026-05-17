@@ -1,6 +1,6 @@
-"""Generate training data from WebMainBench for hummingbird's GBM classifier.
+"""Generate training data from WebMainBench for pulpie's GBM classifier.
 
-Reads webmainbench.jsonl, runs hummingbird's segmenter + feature extraction
+Reads webmainbench.jsonl, runs pulpie's segmenter + feature extraction
 on each page, projects cc-select="true" annotations to block-level KEEP/DISCARD
 labels via word overlap.
 
@@ -16,7 +16,7 @@ import sys
 from collections import Counter
 from html.parser import HTMLParser
 
-HUMMINGBIRD_BIN = os.path.join(
+PULPIE_BIN = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "..", "target", "release", "export_features"
 )
@@ -102,9 +102,9 @@ def compute_overlap(block_text: str, gt_words: set) -> float:
 
 
 def run_export_features(html: str) -> list:
-    """Run hummingbird export_features binary on HTML, return block list."""
+    """Run pulpie export_features binary on HTML, return block list."""
     result = subprocess.run(
-        [HUMMINGBIRD_BIN],
+        [PULPIE_BIN],
         input=html, capture_output=True, text=True, timeout=30,
     )
     if result.returncode != 0:
@@ -132,8 +132,8 @@ def feature_row(block: dict, label: int) -> list:
 
 
 def main():
-    if not os.path.exists(HUMMINGBIRD_BIN):
-        print(f"ERROR: Build hummingbird first: cargo build --release")
+    if not os.path.exists(PULPIE_BIN):
+        print(f"ERROR: Build pulpie first: cargo build --release")
         sys.exit(1)
 
     print(f"Reading {DATA_PATH}...")
@@ -165,10 +165,10 @@ def main():
                 skipped += 1
                 continue
 
-            # Strip annotation markup before feeding to hummingbird
+            # Strip annotation markup before feeding to pulpie
             clean_html = strip_annotations(html)
 
-            # Run hummingbird segmenter + feature extraction
+            # Run pulpie segmenter + feature extraction
             blocks = run_export_features(clean_html)
             if not blocks:
                 skipped += 1

@@ -3,7 +3,7 @@ import json, subprocess, tempfile, os, re
 from collections import Counter
 
 BENCH_PATH = "data/webmainbench.jsonl"
-HBIRD_BIN = "target/release/hummingbird"
+HBIRD_BIN = "target/release/pulpie"
 
 def ngrams(tokens, n):
     return [tuple(tokens[i:i+n]) for i in range(len(tokens) - n + 1)]

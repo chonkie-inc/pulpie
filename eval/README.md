@@ -1,6 +1,6 @@
-# Hummingbird Evaluation Set
+# Pulpie Evaluation Set
 
-HTML pages sourced from qrater datasets (exa, brave_jina, firecrawl APIs) for comparing hummingbird's extraction against API baselines.
+HTML pages sourced from qrater datasets (exa, brave_jina, firecrawl APIs) for comparing pulpie's extraction against API baselines.
 
 ## Pages
 
@@ -23,7 +23,7 @@ HTML pages sourced from qrater datasets (exa, brave_jina, firecrawl APIs) for co
 ## Directories
 
 - `html/` — Raw HTML pages (curl'd)
-- `output/` — Hummingbird extraction results
+- `output/` — Pulpie extraction results
 - `reference/` — API-extracted text (from qrater datasets) for comparison
 - `manifest.json` — Metadata for all pages
 

@@ -403,7 +403,7 @@ def main():
         ('GPT-4 (LLM)', 0.9024, 0.9382, 0.9042, 0.8638),
         ('Dripper 0.6B', 0.8779, 0.9205, 0.8804, 0.8313),
         ('** [BLOCK] classifier **', avg_all, level_avgs['simple'], level_avgs['mid'], level_avgs['hard']),
-        ('Hummingbird GBM (h2t)', 0.808, 0.885, 0.805, 0.740),
+        ('Pulpie GBM (h2t)', 0.808, 0.885, 0.805, 0.740),
         ('magic-html', 0.7138, 0.7857, 0.7121, 0.6434),
         ('Readability', 0.6543, 0.7415, 0.6550, 0.5652),
         ('Trafilatura', 0.6402, 0.7309, 0.6417, 0.5466),

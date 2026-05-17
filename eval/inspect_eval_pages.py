@@ -1,8 +1,8 @@
-"""Inspect eval pages: compare hummingbird output vs ground truth.
+"""Inspect eval pages: compare pulpie output vs ground truth.
 
 For each of the 50 eval pages:
 - Extract ground truth text from cc-select annotations
-- Extract hummingbird output
+- Extract pulpie output
 - Compare to find: missing content, leaked boilerplate
 """
 
@@ -17,7 +17,7 @@ from bs4 import BeautifulSoup, Tag
 
 DATA_DIR = os.path.dirname(os.path.abspath(__file__))
 BENCH_PATH = os.path.join(os.path.dirname(DATA_DIR), "data", "webmainbench.jsonl")
-HBIRD_BIN = os.path.join(os.path.dirname(DATA_DIR), "target", "release", "hummingbird")
+HBIRD_BIN = os.path.join(os.path.dirname(DATA_DIR), "target", "release", "pulpie")
 RESULTS_PATH = os.path.join(DATA_DIR, "eval_sample50_results.json")
 
 SEED = 42
@@ -75,7 +75,7 @@ def get_all_text_blocks(html):
     return blocks
 
 
-def extract_with_hummingbird(html_content):
+def extract_with_pulpie(html_content):
     with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
         f.write(html_content)
         tmp_path = f.name
@@ -91,9 +91,9 @@ def extract_with_hummingbird(html_content):
         os.unlink(tmp_path)
 
 
-def find_missing_content(gt_blocks, hbird_md):
-    """Find ground truth content blocks not present in hummingbird output."""
-    md_norm = normalize(hbird_md)
+def find_missing_content(gt_blocks, pulpie_md):
+    """Find ground truth content blocks not present in pulpie output."""
+    md_norm = normalize(pulpie_md)
     missing = []
     found = []
     for block_text in gt_blocks:
@@ -113,9 +113,9 @@ def find_missing_content(gt_blocks, hbird_md):
     return missing, found
 
 
-def find_boilerplate_in_output(all_blocks, hbird_md):
-    """Find boilerplate blocks that ended up in hummingbird output."""
-    md_norm = normalize(hbird_md)
+def find_boilerplate_in_output(all_blocks, pulpie_md):
+    """Find boilerplate blocks that ended up in pulpie output."""
+    md_norm = normalize(pulpie_md)
     leaked = []
     for block in all_blocks:
         if block["is_content"]:
@@ -174,11 +174,11 @@ def main():
         all_blocks = get_all_text_blocks(html)
         n_boilerplate = sum(1 for b in all_blocks if not b["is_content"])
 
-        # Get hummingbird output
-        md = extract_with_hummingbird(html)
+        # Get pulpie output
+        md = extract_with_pulpie(html)
 
         print(f"  Ground truth: {len(gt_blocks)} content blocks, {n_boilerplate} boilerplate blocks")
-        print(f"  Hummingbird output: {len(md.strip())} chars")
+        print(f"  Pulpie output: {len(md.strip())} chars")
 
         # Check for missing content
         if gt_blocks:
@@ -228,7 +228,7 @@ def main():
         if not gt_blocks:
             continue
 
-        md = extract_with_hummingbird(html)
+        md = extract_with_pulpie(html)
 
         missing, found = find_missing_content(gt_blocks, md)
         leaked = find_boilerplate_in_output(all_blocks, md)

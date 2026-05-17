@@ -296,9 +296,9 @@ def main():
          level_avgs.get('simple', 0), level_avgs.get('mid', 0), level_avgs.get('hard', 0)),
         ('DeepSeek V3.2 (paper)', 0.9098, 0.9415, 0.9104, 0.8771),
         ('Dripper 0.6B (paper)', 0.8779, 0.9205, 0.8804, 0.8313),
-        ('Hummingbird Latte Large', 0.8642, 0.8909, 0.8724, 0.8293),
-        ('Hummingbird Latte Base', 0.857, 0.889, 0.866, 0.816),
-        ('Hummingbird Espresso (GBM)', 0.808, 0.885, 0.805, 0.740),
+        ('Pulpie Orange Large', 0.8642, 0.8909, 0.8724, 0.8293),
+        ('Pulpie Orange Base', 0.857, 0.889, 0.866, 0.816),
+        ('Pulpie Espresso (GBM)', 0.808, 0.885, 0.805, 0.740),
     ]
     comparisons.sort(key=lambda x: -x[1])
 
