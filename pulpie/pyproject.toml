@@ -46,9 +46,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/chonkie-inc/hummingbird"
-Documentation = "https://github.com/chonkie-inc/hummingbird"
-Repository = "https://github.com/chonkie-inc/hummingbird"
+Homepage = "https://github.com/chonkie-inc/pulpie"
+Documentation = "https://github.com/chonkie-inc/pulpie"
+Repository = "https://github.com/chonkie-inc/pulpie"
 
 [tool.setuptools.packages.find]
 where = ["src"]
