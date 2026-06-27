@@ -1,0 +1,32 @@
+name: Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Parity tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: "pulpie/pyproject.toml"
+
+      - name: Install pulpie with dev + markdown extras
+        working-directory: pulpie
+        run: uv pip install --system -e ".[dev,markdown]"
+
+      - name: Run simplify/reconstruct parity tests
+        working-directory: pulpie
+        run: pytest tests -n auto -q
