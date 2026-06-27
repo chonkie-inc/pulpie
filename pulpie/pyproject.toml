@@ -30,6 +30,8 @@ dependencies = [
     "torch>=2.1",
     "transformers>=4.45,<5.0",
     "lxml>=5.0",
+    "selectolax>=0.3",
+    "beautifulsoup4>=4.12",
 ]
 
 [project.optional-dependencies]
