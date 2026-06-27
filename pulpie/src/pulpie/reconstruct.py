@@ -55,14 +55,21 @@ def extract_main_html(map_html: str, labels: dict[str, str]) -> str:
 
     root = html_to_element(map_html)
 
+    # Map each _item_id to its first element in document order (matches the
+    # previous per-id ``xpath(...)[0]`` lookup, in a single tree traversal).
+    id_to_element: dict[str, html.HtmlElement] = {}
+    for el in root.iter():
+        iid = el.get(ITEM_ID_ATTR)
+        if iid is not None and iid not in id_to_element:
+            id_to_element[iid] = el
+
     elements_to_remain: set = set()
     for remained_id, label in labels.items():
         if label != "main":
             continue
-        elem_list = root.xpath(f'//*[@{ITEM_ID_ATTR}="{remained_id}"]')
-        if not elem_list:
+        elem = id_to_element.get(remained_id)
+        if elem is None:
             continue
-        elem = elem_list[0]
         for child in elem.iter():
             elements_to_remain.add(child)
         for ancestor in elem.iterancestors():

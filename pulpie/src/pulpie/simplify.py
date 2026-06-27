@@ -24,6 +24,9 @@ from bs4 import BeautifulSoup
 from lxml import etree, html
 from selectolax.parser import HTMLParser
 
+# `simplify` is the only public symbol; everything else is a port-internal helper.
+__all__ = ["simplify"]
+
 # Inline tags (do not start a new block).
 inline_tags = {
     "map", "optgroup", "span", "input", "time", "u", "strong", "small", "sub",
@@ -47,9 +50,6 @@ no_block_tags = {"math"}
 
 # Tags whose text is excluded from truncation length accounting.
 no_calc_text_tags = {"math", "table"}
-
-# Inline tags preserved even though inline.
-EXCLUDED_TAGS = {"img", "br", "li", "dt", "dd", "td", "th"}
 
 # Standalone class/id values removed when a direct child of <body>.
 ATTR_PATTERNS_TO_REMOVE = {"nav"}
