@@ -1,0 +1,27 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    name: Build and publish pulpie
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pulpie
+    permissions:
+      id-token: write  # required for PyPI trusted publishing (OIDC)
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Build wheel and sdist
+        working-directory: pulpie
+        run: uv build
+
+      - name: Publish to PyPI
+        working-directory: pulpie
+        run: uv publish

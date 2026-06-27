@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pulpie"
-version = "0.1.0"
+version = "0.0.1"
 description = "Fast content extraction from HTML using encoder models."
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -30,6 +30,8 @@ dependencies = [
     "torch>=2.1",
     "transformers>=4.45,<5.0",
     "lxml>=5.0",
+    "selectolax>=0.3",
+    "beautifulsoup4>=4.12",
 ]
 
 [project.optional-dependencies]
@@ -37,6 +39,7 @@ markdown = ["html2text>=2024.2"]
 all = ["html2text>=2024.2"]
 dev = [
     "pytest>=7.0",
+    "pytest-xdist>=3.0",
     "html2text>=2024.2",
     "ruff>=0.9",
     "ty>=0.0.20",
