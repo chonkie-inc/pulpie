@@ -12,7 +12,7 @@
 [![Blog](https://img.shields.io/badge/blog-read%20the%20writeup-E34C26.svg)](https://usefeyn.com/blog/pulpie-pareto-optimal-models-for-cleaning-the-web/)
 [![GitHub stars](https://img.shields.io/github/stars/chonkie-inc/pulpie.svg)](https://github.com/chonkie-inc/pulpie/stargazers)
 
-_Pareto-optimal models for cleaning the web — extract main content from HTML at one twentieth the cost._
+_Pareto-optimal models for cleaning the web. Extract main content from HTML at one twentieth the cost._
 
 [Install](#installation) •
 [Usage](#usage) •
@@ -23,14 +23,14 @@ _Pareto-optimal models for cleaning the web — extract main content from HTML a
 
 </div>
 
-Pulpie extracts the main content from raw HTML — stripping navigation, ads, sidebars, and footers — using small encoder models that label every block in a single forward pass. It approaches state-of-the-art extraction quality while running up to **20x faster** and **20x cheaper** than autoregressive extractors.
+Pulpie extracts the main content from raw HTML, stripping navigation, ads, sidebars, and footers. It uses small encoder models that label every block in a single forward pass, approaching state-of-the-art extraction quality while running up to 20x faster and 20x cheaper than autoregressive extractors on an L4 GPU.
 
-**⚡ Fast** — an encoder labels every block in one forward pass (13.7 pages/sec on an L4) </br>
-**🎯 Accurate** — matches SOTA quality: 0.862–0.873 ROUGE-5 F1 on WebMainBench </br>
-**🪶 Small** — the recommended model is 210M params, fits on any GPU </br>
-**💸 Cheap** — clean 1 billion pages for ~$7,900 vs ~$159,000 for the leading decoder </br>
-**📦 Simple** — `pip install pulpie`, then `Extractor().extract(html)` </br>
-**🔌 Batched** — overlapped CPU+GPU pipeline scales across multiple GPUs </br>
+- **Fast.** An encoder labels every block in one forward pass (13.7 pages/sec on an L4).
+- **Accurate.** Matches state-of-the-art quality: 0.862 to 0.873 ROUGE-5 F1 on WebMainBench.
+- **Small.** The recommended model is 210M parameters and fits on any GPU.
+- **Cheap.** Clean 1 billion pages for ~$7,900, versus ~$159,000 for the leading decoder.
+- **Simple.** Run `pip install pulpie`, then `Extractor().extract(html)`.
+- **Batched.** An overlapped CPU and GPU pipeline scales across multiple GPUs.
 
 ## Installation
 
@@ -94,7 +94,7 @@ All three models are built on [EuroBERT](https://arxiv.org/abs/2503.05500), shar
 
 | Model | Hugging Face | Params | ROUGE-5 F1 | Notes |
 |-------|--------------|--------|------------|-------|
-| **Orange Small** | [`chonkie-ai/pulpie-orange-small`](https://huggingface.co/chonkie-ai/pulpie-orange-small) | 210M | 0.862 | **Recommended** — best size-to-quality ratio |
+| **Orange Small** | [`chonkie-ai/pulpie-orange-small`](https://huggingface.co/chonkie-ai/pulpie-orange-small) | 210M | 0.862 | **Recommended**, best size-to-quality ratio |
 | Orange Base | [`chonkie-ai/pulpie-orange-base`](https://huggingface.co/chonkie-ai/pulpie-orange-base) | 610M | 0.863 | Distilled from Large |
 | Orange Large | [`chonkie-ai/pulpie-orange-large`](https://huggingface.co/chonkie-ai/pulpie-orange-large) | 2.1B | 0.873 | Teacher (highest quality) |
 
@@ -104,12 +104,12 @@ All three models are built on [EuroBERT](https://arxiv.org/abs/2503.05500), shar
 
 Pulpie keeps the "read the page" approach of model-based extractors but moves the bottleneck from memory bandwidth to compute by using an encoder instead of a decoder. The pipeline runs in four stages:
 
-1. **Simplify** — remove scripts, styles, and formatting noise; tag each content block with a unique ID.
-2. **Chunk** — split, tokenize, and pack blocks into chunks of up to 8,192 tokens (≈80% of pages fit in one chunk).
-3. **Classify** — a single encoder forward pass labels every block as content or boilerplate.
-4. **Reconstruct** — return the kept blocks as HTML, or convert them to Markdown.
+1. **Simplify.** Remove scripts, styles, and formatting noise; tag each content block with a unique ID.
+2. **Chunk.** Split, tokenize, and pack blocks into chunks of up to 8,192 tokens (≈80% of pages fit in one chunk).
+3. **Classify.** A single encoder forward pass labels every block as content or boilerplate.
+4. **Reconstruct.** Return the kept blocks as HTML, or convert them to Markdown.
 
-A decoder emits labels one token at a time, re-reading the full model from GPU memory each step. An encoder runs one dense forward pass over the whole input — so the gap widens on bandwidth-limited GPUs (7x faster than Dripper on A100, 20x on L4).
+A decoder emits labels one token at a time, re-reading the full model from GPU memory each step. An encoder runs one dense forward pass over the whole input, so the gap widens on bandwidth-limited GPUs (7x faster than Dripper on A100, 20x on L4).
 
 ## Benchmarks
 
@@ -121,8 +121,8 @@ Quality on the English subset of [WebMainBench](https://github.com/opendatalab/W
 | Dripper | 0.6B | 0.864 | 135 |
 | **Pulpie Orange Base** | 610M | 0.863 | 36 |
 | **Pulpie Orange Small** | 210M | 0.862 | 45 |
-| magic-html | — | 0.700 | 384 |
-| Trafilatura | — | 0.619 | 16 |
+| magic-html | - | 0.700 | 384 |
+| Trafilatura | - | 0.619 | 16 |
 
 Speed and cost (Pulpie Orange Small vs Dripper, 1 billion pages):
 
