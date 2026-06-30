@@ -6,6 +6,7 @@ import torch
 
 from pulpie.chunker import extract_blocks, pack_chunks, tokenize_blocks
 from pulpie.model_utils import (
+    default_device,
     extract_item_ids,
     load_model_and_tokenizer,
     predictions_to_labels,
@@ -35,7 +36,7 @@ class Extractor:
         max_tokens: int = 8192,
     ):
         if device is None:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
+            device = default_device()
         self.device = torch.device(device)
         self.max_tokens = max_tokens
 

@@ -23,6 +23,15 @@ def resolve_model_id(model: str) -> str:
     return MODELS.get(model, model)
 
 
+def default_device() -> str:
+    """Pick the best available device: CUDA, then Apple MPS, then CPU."""
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
 def load_model_and_tokenizer(
     model_id: str, device: torch.device
 ) -> tuple[torch.nn.Module, AutoTokenizer, int]:
