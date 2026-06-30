@@ -25,7 +25,23 @@ HTML pages sourced from qrater datasets (exa, brave_jina, firecrawl APIs) for co
 - `html/` — Raw HTML pages (curl'd)
 - `output/` — Pulpie extraction results
 - `reference/` — API-extracted text (from qrater datasets) for comparison
+- `results/` — Per-method benchmark scores backing `BENCHMARKS.md`
 - `manifest.json` — Metadata for all pages
+
+## Harness scripts
+
+The numbers in the project README / `BENCHMARKS.md` are reproduced by:
+
+- `eval_latte_large_vs_dripper.py` — ROUGE-5 + qrater clean-rate, Pulpie Orange
+  vs Dripper on WebMainBench (the canonical quality harness; see also
+  `tests/gpu/AGENTS.md`).
+- `bench_all_methods.py` — multi-method comparison (Pulpie vs Dripper,
+  Trafilatura, magic-html, raw html2text) for throughput + quality.
+- `eval_all_methods_200.py` — the 200-page variant of the above.
+
+These run against the WebMainBench dataset + Orange model checkpoints, which live
+in a gitignored `data/` dir on the GPU box (not in the repo). They import the
+chunker from the installed `pulpie` package.
 
 ## Known Failures
 
