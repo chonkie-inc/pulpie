@@ -25,12 +25,12 @@ A bold monospace HTML self-closing tag: **`<pulpie/>`**.
 
 | Mark | Represents | Treatment |
 |------|-----------|-----------|
-| `<pulpie/>` | the framework / package | ink + monospace + code-tag; coral-orange only on the `/` |
+| `<pulpie/>` | the framework / package | ink + monospace + code-tag; GitHub-HTML orange only on the `/` |
 | `<orange>` | the model family | vivid illustrated mandarine, full orange |
 
 Same "bracketed-tag" family → clear ecosystem link. Different media (ink/mono vs
 illustrated/color) → clear tier separation, so the two never blur together. The
-single coral `/` accent is the deliberate connector — the self-closing slash is
+single orange `/` accent is the deliberate connector — the self-closing slash is
 the most pulpie-specific glyph (markup that closes/processes).
 
 ## Specifications
@@ -41,8 +41,8 @@ the most pulpie-specific glyph (markup that closes/processes).
 - **Wordmark text:** `<pulpie/>`
 - **Colors:**
   - `<pulpie`, `>` glyphs (wordmark + brackets): `#1A1A1A` (light) / `#FFFFFF` (dark)
-  - `/` accent: `#E8703A` — a punchier coral-orange (distinct from, but in the
-    family of, the mandarine `<orange>` mark's amber `#E69138`).
+  - `/` accent: `#E34C26` — GitHub's HTML language color. Semantically apt
+    (pulpie processes HTML); in the orange family of the `<orange>` model mark.
   - Background: transparent (PNGs), reads correctly on white and dark.
 - **Dimensions:** ~1280×320 (4:1), generous horizontal padding; wordmark centered.
 
@@ -51,8 +51,8 @@ the most pulpie-specific glyph (markup that closes/processes).
 | File | Purpose | Notes |
 |------|---------|-------|
 | `assets/banner.svg` | source of truth, blog hero, scalable | vector; text converted to paths so the font need not be installed by viewers |
-| `assets/banner-light.png` | PyPI (white-bg only) + GitHub light theme | ink wordmark + brackets, coral `/` |
-| `assets/banner-dark.png` | GitHub dark theme | white wordmark + brackets, coral `/` |
+| `assets/banner-light.png` | PyPI (white-bg only) + GitHub light theme | ink wordmark + brackets, HTML-orange `/` |
+| `assets/banner-dark.png` | GitHub dark theme | white wordmark + brackets, HTML-orange `/` |
 
 Asset location: `pulpie/assets/` (kept with the package; referenced via raw GitHub
 URLs so PyPI can load them).
