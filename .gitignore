@@ -19,6 +19,8 @@ data/*.txt
 # Logs
 data/.logs/
 data/*.log
+*.log
+!work.log
 
 # Large binaries
 data/*.bin
