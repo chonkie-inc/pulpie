@@ -19,6 +19,7 @@ from dataclasses import dataclass
 import torch
 
 from pulpie.chunker import SEP_TOKEN, extract_blocks, pack_chunks, tokenize_blocks
+from pulpie.markdown import to_markdown
 from pulpie.model_utils import (
     default_device,
     extract_item_ids,
@@ -32,7 +33,14 @@ from pulpie.simplify import simplify
 
 @dataclass
 class PageInput:
-    """Input to the pipeline."""
+    """Input to the pipeline.
+
+    ``page_id`` is an opaque identifier echoed back on the matching
+    ``PageResult`` so you can correlate inputs and outputs. It is *not* used for
+    ordering (results are returned in input order regardless). If you don't set
+    it, it defaults to 0 and every result will report ``page_id=0`` — set it
+    (e.g. the input's list index) if you need to tell results apart by id.
+    """
 
     html: str
     page_id: int = 0
@@ -41,7 +49,12 @@ class PageInput:
 
 @dataclass
 class PageResult:
-    """Output from the pipeline."""
+    """Output from the pipeline.
+
+    Returned in the same order as the input list. ``error`` is set (and the
+    other fields left empty) when a page failed to process; it is ``None`` on
+    success.
+    """
 
     page_id: int
     labels: dict[str, str]
@@ -135,26 +148,22 @@ def _cpu_prepare(
 
 
 def _postprocess(
-    page_id: int, batch_idx: int, labels: dict[str, str], map_html: str
+    page_id: int,
+    batch_idx: int,
+    labels: dict[str, str],
+    map_html: str,
+    error: str | None = None,
 ) -> tuple[int, PageResult]:
     """CPU post-processing: reconstruct HTML + convert to markdown."""
     main_html = extract_main_html(map_html, labels)
-
-    try:
-        import html2text
-
-        h = html2text.HTML2Text(bodywidth=0)
-        h.ignore_links = False
-        h.ignore_images = False
-        markdown = h.handle(main_html).strip()
-    except ImportError:
-        markdown = main_html
+    markdown = to_markdown(main_html)
 
     return batch_idx, PageResult(
         page_id=page_id,
         labels=labels,
         html=main_html,
         markdown=markdown,
+        error=error,
     )
 
 
@@ -236,6 +245,7 @@ class Pipeline:
                     sep_token_id=sep_token_id,
                     device=device,
                     pad_id=model_inst.config.pad_token_id or 0,
+                    max_batch_tokens=self.max_batch_tokens,
                 )
             )
 
@@ -288,7 +298,13 @@ class Pipeline:
         # Fill gaps
         for i in range(n_pages):
             if results[i] is None:
-                results[i] = PageResult(page_id=pages[i].page_id, labels={}, html="", markdown="")
+                results[i] = PageResult(
+                    page_id=pages[i].page_id,
+                    labels={},
+                    html="",
+                    markdown="",
+                    error="no result produced (page dropped before post-processing)",
+                )
 
         return results  # type: ignore[return-value]
 
@@ -335,7 +351,9 @@ class Pipeline:
                             _infer_and_push(state, pending, out_queue)
                         return
                     if item.error or not item.chunks:
-                        out_queue.put((item.page_id, item.batch_idx, {}, item.map_html))
+                        out_queue.put(
+                            (item.page_id, item.batch_idx, {}, item.map_html, item.error)
+                        )
                     else:
                         pending.append(item)
                 except queue.Empty:
@@ -363,8 +381,8 @@ class Pipeline:
                 if item is None:
                     continue
 
-                page_id, batch_idx, labels, map_html = item
-                future = pool.submit(_postprocess, page_id, batch_idx, labels, map_html)
+                page_id, batch_idx, labels, map_html, error = item
+                future = pool.submit(_postprocess, page_id, batch_idx, labels, map_html, error)
                 pending_futures[future] = batch_idx
 
                 _collect_futures(pending_futures, results)
@@ -382,6 +400,7 @@ class _GPUWorkerState:
     sep_token_id: int
     device: torch.device
     pad_id: int
+    max_batch_tokens: int
 
 
 def _infer_and_push(
@@ -390,7 +409,7 @@ def _infer_and_push(
     out_queue: queue.Queue,
 ) -> None:
     """Run batched inference on accumulated pages and push results."""
-    max_batch_tokens = 16384
+    max_batch_tokens = state.max_batch_tokens
 
     # Flatten chunks, sort by length
     all_chunks: list[tuple[list[int], list[int], int]] = []
@@ -435,7 +454,7 @@ def _infer_and_push(
                 if idx < len(preds):
                     predictions[block_idx] = preds[idx]
         labels = predictions_to_labels(page.item_ids, predictions)
-        out_queue.put((page.page_id, page.batch_idx, labels, page.map_html))
+        out_queue.put((page.page_id, page.batch_idx, labels, page.map_html, None))
 
 
 def _collect_futures(pending: dict, results: list) -> None:
