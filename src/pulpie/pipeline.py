@@ -20,6 +20,7 @@ import torch
 
 from pulpie.chunker import SEP_TOKEN, extract_blocks, pack_chunks, tokenize_blocks
 from pulpie.model_utils import (
+    default_device,
     extract_item_ids,
     load_model_and_tokenizer,
     predictions_to_labels,
@@ -208,7 +209,7 @@ class Pipeline:
             if torch.cuda.is_available():
                 devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())]
             else:
-                devices = ["cpu"]
+                devices = [default_device()]  # "mps" on Apple, else "cpu"
         elif isinstance(devices, str):
             devices = [devices]
         self.devices = [torch.device(d) for d in devices]
