@@ -3,31 +3,15 @@ target/
 *.o
 *.so
 
-# Data files (large, stored elsewhere)
-data/*.csv
-data/*.jsonl
-data/*.json
-!data/selected_features.json
-!data/cc_relabel_urls.json
-data/*.pt
-data/*.txt
-!data/*.py
+# Runtime data dir (datasets / checkpoints live here on GPU boxes; never tracked)
+data/
 
 # WARC files
 *.warc.gz
 
 # Logs
-data/.logs/
-data/*.log
 *.log
 !work.log
-
-# Large binaries
-data/*.bin
-
-# Downloaded model checkpoints
-data/block_classifier_*/
-data/*.safetensors
 
 # Python
 __pycache__/

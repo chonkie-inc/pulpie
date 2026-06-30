@@ -208,8 +208,7 @@ def run_pulpie(pages, model_name, device, output_dir, no_cache=False):
     import torch
     from transformers import AutoModelForTokenClassification, AutoTokenizer
 
-    sys.path.insert(0, DATA_DIR)
-    from block_chunker import extract_blocks, tokenize_blocks, pack_chunks, SEP_TOKEN
+    from pulpie.chunker import extract_blocks, tokenize_blocks, pack_chunks, SEP_TOKEN
 
     # Load model directly (same as old eval that got 0.864)
     model_path = LOCAL_MODELS.get(model_name, model_name)

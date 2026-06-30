@@ -105,8 +105,7 @@ get_full_prompt = sys.modules['mineru_html.process.build_prompt'].get_full_promp
 parse_llm_response = sys.modules['mineru_html.process.parse_result'].parse_llm_response
 extract_main_html = sys.modules['mineru_html.process.map_to_main'].extract_main_html
 
-sys.path.insert(0, DATA_DIR)
-from block_chunker import extract_blocks, tokenize_blocks, pack_chunks, SEP_TOKEN
+from pulpie.chunker import extract_blocks, tokenize_blocks, pack_chunks, SEP_TOKEN
 
 # ── Config ──
 WMB_PATH = os.path.join(DATA_DIR, 'webmainbench.jsonl')
