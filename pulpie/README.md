@@ -1,4 +1,9 @@
-# Pulpie
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/chonkie-inc/pulpie/main/pulpie/assets/banner-dark.png">
+    <img alt="pulpie" src="https://raw.githubusercontent.com/chonkie-inc/pulpie/main/pulpie/assets/banner-light.png" width="440">
+  </picture>
+</p>
 
 Fast content extraction from HTML using encoder models. 16x faster than autoregressive approaches at the same quality.
 
