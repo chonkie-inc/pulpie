@@ -5,6 +5,7 @@ from __future__ import annotations
 import torch
 
 from pulpie.chunker import extract_blocks, pack_chunks, tokenize_blocks
+from pulpie.markdown import to_markdown
 from pulpie.model_utils import (
     default_device,
     extract_item_ids,
@@ -50,11 +51,10 @@ class Extractor:
         simplified, map_html = simplify(html)
         labels = self._classify(simplified)
         main_html = extract_main_html(map_html, labels)
-        markdown = self._to_markdown(main_html)
 
         return ExtractionResult(
             html=main_html,
-            markdown=markdown,
+            markdown=to_markdown(main_html),
             labels=labels,
         )
 
@@ -65,11 +65,10 @@ class Extractor:
         labels = self._classify(simplified_html)
         source = map_html if map_html is not None else simplified_html
         main_html = extract_main_html(source, labels)
-        markdown = self._to_markdown(main_html)
 
         return ExtractionResult(
             html=main_html,
-            markdown=markdown,
+            markdown=to_markdown(main_html),
             labels=labels,
         )
 
@@ -107,18 +106,6 @@ class Extractor:
                     predictions[block_idx] = preds[i]
 
         return predictions_to_labels(item_ids, predictions)
-
-    def _to_markdown(self, html: str) -> str:
-        """Convert HTML to markdown."""
-        try:
-            import html2text
-
-            h = html2text.HTML2Text(bodywidth=0)
-            h.ignore_links = False
-            h.ignore_images = False
-            return h.handle(html).strip()
-        except ImportError:
-            return html
 
 
 class ExtractionResult:
