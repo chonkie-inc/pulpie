@@ -41,7 +41,7 @@ the most pulpie-specific glyph (markup that closes/processes).
 - **Wordmark text:** `<pulpie/>`
 - **Colors:**
   - `<pulpie`, `>` glyphs (wordmark + brackets): `#1A1A1A` (light) / `#FFFFFF` (dark)
-  - `/` accent: `#E34C26` — GitHub's HTML language color. Semantically apt
+  - `/` accent: `#D64C2B` — the HTML language color as rendered in GitHub's UI. Semantically apt
     (pulpie processes HTML); in the orange family of the `<orange>` model mark.
   - Background: transparent (PNGs), reads correctly on white and dark.
 - **Dimensions:** ~1280×320 (4:1), generous horizontal padding; wordmark centered.
