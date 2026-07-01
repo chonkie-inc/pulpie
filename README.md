@@ -1,16 +1,16 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/chonkie-inc/pulpie/main/assets/banner-dark.png">
-  <img alt="pulpie" src="https://raw.githubusercontent.com/chonkie-inc/pulpie/main/assets/banner-light.png" width="460">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/feyninc/pulpie/main/assets/banner-dark.png">
+  <img alt="pulpie" src="https://raw.githubusercontent.com/feyninc/pulpie/main/assets/banner-light.png" width="460">
 </picture>
 
 [![PyPI version](https://img.shields.io/pypi/v/pulpie.svg)](https://pypi.org/project/pulpie/)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://pypi.org/project/pulpie/)
-[![License](https://img.shields.io/github/license/chonkie-inc/pulpie.svg)](https://github.com/chonkie-inc/pulpie/blob/main/LICENSE)
+[![License](https://img.shields.io/github/license/feyninc/pulpie.svg)](https://github.com/feyninc/pulpie/blob/main/LICENSE)
 [![Downloads](https://static.pepy.tech/badge/pulpie)](https://pepy.tech/project/pulpie)
 [![Blog](https://img.shields.io/badge/blog-read%20the%20writeup-E34C26.svg)](https://usefeyn.com/blog/pulpie-pareto-optimal-models-for-cleaning-the-web/)
-[![GitHub stars](https://img.shields.io/github/stars/chonkie-inc/pulpie.svg)](https://github.com/chonkie-inc/pulpie/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/feyninc/pulpie.svg)](https://github.com/feyninc/pulpie/stargazers)
 
 _Pareto-optimal models for cleaning the web. Extract main content from HTML at one twentieth the cost._
 
@@ -94,9 +94,9 @@ All three models are built on [EuroBERT](https://arxiv.org/abs/2503.05500), shar
 
 | Model | Hugging Face | Params | ROUGE-5 F1 | Notes |
 |-------|--------------|--------|------------|-------|
-| **Orange Small** | [`chonkie-ai/pulpie-orange-small`](https://huggingface.co/chonkie-ai/pulpie-orange-small) | 210M | 0.862 | **Recommended**, best size-to-quality ratio |
-| Orange Base | [`chonkie-ai/pulpie-orange-base`](https://huggingface.co/chonkie-ai/pulpie-orange-base) | 610M | 0.863 | Distilled from Large |
-| Orange Large | [`chonkie-ai/pulpie-orange-large`](https://huggingface.co/chonkie-ai/pulpie-orange-large) | 2.1B | 0.873 | Teacher (highest quality) |
+| **Orange Small** | [`feyninc/pulpie-orange-small`](https://huggingface.co/feyninc/pulpie-orange-small) | 210M | 0.862 | **Recommended**, best size-to-quality ratio |
+| Orange Base | [`feyninc/pulpie-orange-base`](https://huggingface.co/feyninc/pulpie-orange-base) | 610M | 0.863 | Distilled from Large |
+| Orange Large | [`feyninc/pulpie-orange-large`](https://huggingface.co/feyninc/pulpie-orange-large) | 2.1B | 0.873 | Teacher (highest quality) |
 
 `orange-small` is the default. Despite being a third the size of Dripper (the leading extractor), it matches its quality (0.862 vs 0.864) while running 20x faster.
 

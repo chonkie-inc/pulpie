@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pulpie"
-version = "0.0.1"
+version = "0.0.2"
 description = "Fast content extraction from HTML using encoder models."
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
 authors = [
-    {name = "Chonkie AI", email = "team@chonkie.ai"},
+    {name = "Feyn", email = "team@usefeyn.com"},
 ]
 keywords = ["html", "content-extraction", "web", "nlp", "encoder", "transformer"]
 classifiers = [
@@ -46,9 +46,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/chonkie-inc/pulpie"
-Documentation = "https://github.com/chonkie-inc/pulpie"
-Repository = "https://github.com/chonkie-inc/pulpie"
+Homepage = "https://github.com/feyninc/pulpie"
+Documentation = "https://github.com/feyninc/pulpie"
+Repository = "https://github.com/feyninc/pulpie"
 
 [tool.setuptools.packages.find]
 where = ["src"]
