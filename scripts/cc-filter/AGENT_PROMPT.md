@@ -10,7 +10,7 @@ You're setting up a CPU-only pipeline on a fresh GCP VM (target: `c2-standard-16
 
 1. `HF_TOKEN` with write access to the `chonkie-ai` org
 2. A `--start` / `--end` WARC index range to process (full range is 0–100000; ask which shard this box should own so it doesn't overlap with other boxes)
-3. A way to get `stream_filter_upload.py` onto the box. It lives in this repo at `scripts/cc-filter/stream_filter_upload.py`. Easiest: `git clone https://github.com/chonkie-inc/pulpie` and copy the file out, or `gh repo clone chonkie-inc/pulpie` if `gh` is installed.
+3. A way to get `stream_filter_upload.py` onto the box. It lives in this repo at `scripts/cc-filter/stream_filter_upload.py`. Easiest: `git clone https://github.com/feyninc/pulpie` and copy the file out, or `gh repo clone feyninc/pulpie` if `gh` is installed.
 
 **Authoritative setup guide:** `RECREATE_SETUP.md` in this same directory. Follow it exactly. Condensed version:
 

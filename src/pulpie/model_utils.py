@@ -10,9 +10,9 @@ from transformers import AutoModelForTokenClassification, AutoTokenizer
 from pulpie.chunker import SEP_TOKEN
 
 MODELS = {
-    "orange-small": "chonkie-ai/pulpie-orange-small",
-    "orange-base": "chonkie-ai/pulpie-orange-base",
-    "orange-large": "chonkie-ai/pulpie-orange-large",
+    "orange-small": "feyninc/pulpie-orange-small",
+    "orange-base": "feyninc/pulpie-orange-base",
+    "orange-large": "feyninc/pulpie-orange-large",
 }
 
 ITEM_ID_PATTERN = re.compile(r'_item_id="(\d+)"')
